@@ -156,6 +156,9 @@ input[type=text]:focus{outline:none;border-color:var(--accent-soft);box-shadow:0
 .chk{font-size:.82rem;color:var(--ink-soft);display:inline-flex;align-items:center;gap:5px;
   background:var(--tag);padding:5px 10px;border-radius:7px;cursor:pointer;border:1px solid transparent}
 .chk.on{background:#fff;border-color:var(--accent-soft);color:var(--ink)}
+/* チェック枠を常に同じ幅で確保し、✓の有無で横幅が変わらない＝レイアウトがずれない */
+.chk .chkbox{display:inline-block;width:.9em;text-align:center;flex:0 0 auto;color:var(--accent-soft);font-weight:700}
+.chk .chklbl{white-space:nowrap}
 
 .suggest{margin-top:14px}
 .suggest .lbl{margin-bottom:7px}
@@ -394,20 +397,28 @@ function normalizeRecord(r){
   };
 }
 // 出典の長い列名（例「翁鍼灸治療院（Web)」「代田文誌（沢田健：鍼灸治療基礎学）」）から、
-// 表示用の短い名前（括弧の前まで）を作る。
+// 表示用の短い名前（括弧の前まで）を作る。フィルター（出典で絞る）はこの短い名前を使う。
 function shortSourceName(k){
   const m=String(k).match(/^[^（(]+/);
   return (m?m[0]:String(k)).trim();
+}
+// 短い名前 → 正式名（カラム名）の対応。検索結果の見出しは正式名で表示する。
+let SOURCE_FULL={};
+function fullSourceName(shortName){
+  return SOURCE_FULL[shortName] || shortName;
 }
 // 出典の列順（CSVの列順）。取り込み時に生データのキーから確定する。
 let SOURCE_ORDER=[];
 function computeSourceOrder(rawArr){
   const order=[], seen=new Set();
+  SOURCE_FULL={};
   for(const r of rawArr){
     if(!r||typeof r!=="object") continue;
     for(const k of Object.keys(r)){
       if(NON_SOURCE_KEYS.has(k)) continue;
       const name=shortSourceName(k);
+      // 正式名（カラム名）を記録。複数行で異なる場合は最初に出たものを優先。
+      if(!(name in SOURCE_FULL)) SOURCE_FULL[name]=String(k).trim();
       if(!seen.has(name)){ seen.add(name); order.push(name); }
     }
   }
@@ -585,7 +596,7 @@ function renderTerms(){
 }
 function renderSrc(){
   $("#srcgrid").innerHTML=SOURCES.map(s=>
-    `<span class="chk ${srcOn.has(s)?"on":""}" data-s="${s}">${srcOn.has(s)?"✓ ":""}${s}</span>`).join("");
+    `<span class="chk ${srcOn.has(s)?"on":""}" data-s="${esc(s)}"><span class="chkbox">${srcOn.has(s)?"✓":""}</span><span class="chklbl">${esc(fullSourceName(s))}</span></span>`).join("");
   $("#srcgrid").querySelectorAll(".chk").forEach(e=>e.onclick=()=>{
     const s=e.dataset.s; if(srcOn.has(s)){if(srcOn.size>1)srcOn.delete(s);}else srcOn.add(s);
     renderSrc();run();saveState();
