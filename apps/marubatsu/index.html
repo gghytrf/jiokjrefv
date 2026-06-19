@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<script>
+/* ===== 統合アプリ用ガード（自動挿入・元コードは未変更）=====
+   iframe 内で動くとき、各アプリ独自の Service Worker 登録／キャッシュ操作／
+   バージョン確認を無効化し、キャッシュとバージョン管理を親（統合ホーム）へ
+   一元化します。localStorage（学習データ・カルテ等）はそのまま使えます。 */
+(function(){
+  try{
+    if (window.top === window.self) return; // 単体起動時は何もしない
+
+    // 1) Service Worker を無害なスタブに
+    var swStub = {
+      register:function(){ return Promise.reject(new Error('SW disabled in integrated app')); },
+      getRegistration:function(){ return Promise.resolve(undefined); },
+      getRegistrations:function(){ return Promise.resolve([]); },
+      addEventListener:function(){}, removeEventListener:function(){},
+      get controller(){ return null; },
+      ready:new Promise(function(){})
+    };
+    try{ Object.defineProperty(navigator,'serviceWorker',{get:function(){return swStub;},configurable:true}); }catch(e){}
+
+    // 2) Cache Storage を無効化（子アプリが親のキャッシュを消さないように）
+    var noop0=function(){return Promise.resolve();};
+    function neutralizeCaches(){
+      try{
+        var cacheStub={
+          open:function(){return Promise.resolve({addAll:noop0,add:noop0,put:noop0,
+            match:function(){return Promise.resolve(undefined);},delete:function(){return Promise.resolve(false);},
+            keys:function(){return Promise.resolve([]);}});},
+          keys:function(){return Promise.resolve([]);},
+          delete:function(){return Promise.resolve(false);},
+          match:function(){return Promise.resolve(undefined);},
+          has:function(){return Promise.resolve(false);}
+        };
+        try{ Object.defineProperty(window,'caches',{get:function(){return cacheStub;},configurable:true}); }
+        catch(e){
+          // defineProperty が不可なら既存オブジェクトのメソッドを直接無害化
+          if(window.caches){
+            try{ window.caches.keys=function(){return Promise.resolve([]);}; }catch(_){}
+            try{ window.caches.delete=function(){return Promise.resolve(false);}; }catch(_){}
+            try{ window.caches.open=cacheStub.open; }catch(_){}
+          }
+        }
+      }catch(e){}
+    }
+    neutralizeCaches();
+
+    // 3) アプリ独自の「更新」ボタンを隠す（親の「更新確認」に一本化）
+    var css='/* marubatsu: 非表示にする独自要素なし */';
+    function injectCss(){ try{ var s=document.createElement('style'); s.textContent=css; (document.head||document.documentElement).appendChild(s);}catch(e){} }
+    if(document.head){ injectCss(); }
+    else { document.addEventListener('DOMContentLoaded', injectCss); }
+  }catch(e){}
+
+
+  })();
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="〇×国試">
+<meta name="theme-color" content="#2c5f7c">
+<title>はり師きゅう師・あマ指 〇×問題集</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --main:#2c5f7c; --main-d:#234c63; --main-l:#5a8fa8;
+    --bg:#f5f7fa; --ink:#2c3e50; --sub:#7a8a99; --line:#e8eef3;
+    --amashi:#5a3c8b; --hari:#8b5a3c;
+    --ok:#28a745; --ok-bg:#d4edda; --ok-ink:#155724;
+    --ng:#dc3545; --ng-bg:#f8d7da; --ng-ink:#721c24;
+    --warn:#ffc107;
+    --serif:'Shippori Mincho', serif;
+    --sans:'Zen Kaku Gothic New', -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif;
+    --fs:1;                /* 文字サイズ倍率（A-/A+で変化） */
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color:transparent; }
+  html,body{ font-family:var(--sans); background:var(--bg); color:var(--ink); line-height:1.65; font-size:calc(16px*var(--fs)); }
+  body{ padding-bottom:72px; }
+
+  header{ background:var(--main); color:#fff; padding:14px 16px; position:sticky; top:0; z-index:100; box-shadow:0 2px 8px rgba(0,0,0,.12); }
+  header h1{ font-family:var(--serif); font-size:calc(17px*var(--fs)); font-weight:700; letter-spacing:.04em; padding-right:148px; }
+  /* 文字サイズ調整（ヘッダー右上・📖ボタンの左） */
+  .fs-ctrl{ position:absolute; top:11px; right:90px; display:flex; align-items:center; gap:4px; }
+  .fs-ctrl button{ width:28px; height:28px; border:1px solid rgba(255,255,255,.55); background:rgba(255,255,255,.12); color:#fff; border-radius:8px; cursor:pointer; line-height:1; font-weight:700; font-family:inherit; padding:0; transition:.15s; }
+  .fs-ctrl button:active{ background:#fff; color:var(--main); }
+  .fs-ctrl .fs-minus{ font-size:11px; } .fs-ctrl .fs-plus{ font-size:15px; }
+  .fs-ctrl .fs-label{ font-size:9px; color:rgba(255,255,255,.85); min-width:24px; text-align:center; }
+  header .sub{ font-size:calc(11px*var(--fs)); opacity:.85; margin-top:1px; }
+
+  .wrap{ max-width:560px; margin:0 auto; padding:16px; }
+  .card{ background:#fff; border-radius:14px; padding:20px; margin-bottom:14px; box-shadow:0 2px 6px rgba(0,0,0,.05); }
+  .card h2{ font-family:var(--serif); font-size:calc(15px*var(--fs)); color:var(--main); margin-bottom:14px; padding-bottom:8px; border-bottom:2px solid var(--line); }
+
+  .stats{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:14px; }
+  .stat-box{ background:#fff; border-radius:12px; padding:14px 8px; text-align:center; box-shadow:0 2px 6px rgba(0,0,0,.05); }
+  .stat-box .num{ font-family:var(--serif); font-size:calc(24px*var(--fs)); font-weight:700; color:var(--main); }
+  .stat-box .lbl{ font-size:calc(11px*var(--fs)); color:var(--sub); margin-top:2px; }
+
+  .menu-btn{ display:block; width:100%; padding:16px 18px; background:#fff; border:none; border-radius:14px; margin-bottom:10px; font-size:calc(16px*var(--fs)); font-weight:500; text-align:left; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,.05); transition:.15s; color:var(--ink); font-family:var(--sans); }
+  .menu-btn:active{ transform:scale(.98); background:#eef4f8; }
+  .menu-btn .ico{ display:inline-block; width:30px; }
+  .menu-btn .desc{ font-size:calc(12px*var(--fs)); color:var(--sub); margin-top:4px; padding-left:30px; font-weight:400; }
+  .menu-btn .label{ font-weight:700; }
+  .daily-count-row{ display:flex; gap:8px; flex-wrap:wrap; }
+  .count-btn{ flex:1; min-width:64px; padding:12px 6px; border:1px solid var(--line); background:#fff; border-radius:10px; font-size:calc(15px*var(--fs)); font-weight:600; color:var(--main); cursor:pointer; font-family:var(--sans); }
+  .count-btn.active{ background:var(--main); color:#fff; border-color:var(--main); }
+  .interval-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .interval-row .il-lbl{ width:120px; font-size:calc(13px*var(--fs)); color:var(--ink); }
+  .interval-row .il-bar{ flex:1; height:10px; background:#eef1f4; border-radius:5px; overflow:hidden; }
+  .interval-row .il-bar > i{ display:block; height:100%; border-radius:5px; }
+  .interval-row .il-num{ width:48px; text-align:right; font-weight:700; font-size:calc(13px*var(--fs)); color:var(--ink); }
+  .subj-prog{ margin-bottom:12px; }
+  .subj-prog .sp-head{ display:flex; justify-content:space-between; font-size:calc(13px*var(--fs)); margin-bottom:4px; }
+  .subj-prog .sp-bar{ height:16px; border-radius:4px; overflow:hidden; display:flex; background:#eef1f4; }
+
+  .question-meta{ display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin-bottom:14px; font-size:calc(12px*var(--fs)); color:var(--sub); }
+  .badge{ display:inline-block; background:var(--main); color:#fff; padding:3px 10px; border-radius:12px; font-size:calc(11px*var(--fs)); font-weight:700; }
+  .badge.subject{ background:var(--main-l); }
+  .badge.exam-type{ background:var(--hari); }
+  .badge.exam-type.amashi{ background:var(--amashi); }
+
+  .q-text{ font-size:calc(18px*var(--fs)); line-height:1.8; margin:8px 0 22px; font-weight:500; }
+
+  .ox-row{ display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:8px; }
+  .ox-btn{ font-family:var(--serif); font-size:calc(48px*var(--fs)); font-weight:700; padding:22px 0; border-radius:16px; border:3px solid var(--line); background:#fff; cursor:pointer; transition:.15s; color:var(--main); }
+  .ox-btn.maru{ color:var(--ok); }
+  .ox-btn.batsu{ color:var(--ng); }
+  .ox-btn:active{ transform:scale(.96); }
+  .ox-btn:disabled{ cursor:default; opacity:.5; }
+  .ox-btn.chosen.maru{ background:var(--ok-bg); border-color:var(--ok); opacity:1; }
+  .ox-btn.chosen.batsu{ background:var(--ng-bg); border-color:var(--ng); opacity:1; }
+  .ox-btn .cap{ display:block; font-family:var(--sans); font-size:calc(13px*var(--fs)); font-weight:500; color:var(--sub); margin-top:2px; }
+
+  .result-banner{ display:none; padding:12px 16px; border-radius:12px; font-family:var(--serif); font-weight:700; font-size:calc(16px*var(--fs)); text-align:center; margin-bottom:14px; }
+  .result-banner.correct{ background:var(--ok-bg); color:var(--ok-ink); }
+  .result-banner.incorrect{ background:var(--ng-bg); color:var(--ng-ink); }
+
+  .answer-area{ display:none; padding:16px; background:#fafbfc; border-radius:12px; margin-bottom:14px; border-left:4px solid var(--main); }
+  .answer-area h3{ font-size:calc(13px*var(--fs)); color:var(--main); margin-bottom:8px; font-weight:700; }
+  .answer-area .content{ font-size:calc(14.5px*var(--fs)); color:#3a4a5a; white-space:pre-wrap; }
+
+  .nav-row{ display:flex; gap:10px; }
+  .btn{ flex:1; display:inline-flex; align-items:center; justify-content:center; padding:14px 18px; background:var(--main); color:#fff; border:none; border-radius:12px; font-size:calc(15px*var(--fs)); font-weight:700; cursor:pointer; transition:.15s; font-family:var(--sans); }
+  .btn:active{ transform:scale(.98); }
+  .btn:disabled{ background:#aab5bf; cursor:not-allowed; }
+  .btn.secondary{ background:#6c8499; }
+  .btn.outline{ background:#fff; color:var(--main); border:2px solid var(--main); }
+
+  .progress-info{ background:#eef4f8; padding:10px 14px; border-radius:10px; margin-bottom:14px; font-size:calc(13px*var(--fs)); color:var(--main); text-align:center; font-weight:500; }
+  .bar{ height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:8px; }
+  .bar > i{ display:block; height:100%; background:var(--main); transition:width .3s; }
+
+  .filter-grid{ display:flex; flex-direction:column; gap:10px; }
+  .radio-row{ display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--bg); border-radius:10px; cursor:pointer; }
+  .radio-row input{ width:18px; height:18px; accent-color:var(--main); }
+  select{ width:100%; padding:11px 12px; border:1.5px solid #d4dde4; border-radius:10px; font-size:calc(14px*var(--fs)); background:#fff; font-family:var(--sans); color:var(--ink); }
+
+  .subject-item{ display:flex; justify-content:space-between; align-items:center; padding:12px 14px; background:var(--bg); border-radius:10px; cursor:pointer; margin-bottom:8px; transition:.15s; }
+  .subject-item:active{ background:#e8eef3; }
+  .subject-item .count{ font-size:calc(12px*var(--fs)); color:var(--sub); background:#fff; padding:2px 10px; border-radius:10px; }
+
+  .empty-state{ text-align:center; padding:48px 20px; color:var(--sub); }
+  .empty-state .big{ font-size:calc(40px*var(--fs)); margin-bottom:10px; }
+
+  .bottom-nav{ position:fixed; bottom:0; left:0; right:0; background:#fff; border-top:1px solid var(--line); display:flex; justify-content:space-around; padding:8px 0; z-index:100; }
+  .nav-btn{ flex:1; background:none; border:none; padding:6px 0; cursor:pointer; color:var(--sub); font-size:calc(11px*var(--fs)); display:flex; flex-direction:column; align-items:center; gap:3px; font-family:var(--sans); }
+  .nav-btn.active{ color:var(--main); font-weight:700; }
+  .nav-btn .ico{ font-size:calc(20px*var(--fs)); }
+
+  .toast{ position:fixed; bottom:84px; left:50%; transform:translateX(-50%); background:rgba(44,62,80,.95); color:#fff; padding:10px 22px; border-radius:24px; font-size:calc(14px*var(--fs)); z-index:200; opacity:0; transition:opacity .3s; pointer-events:none; }
+  .toast.show{ opacity:1; }
+
+  .screen{ display:none; }
+  .screen.active{ display:block; }
+  .loading{ text-align:center; padding:60px 20px; color:var(--sub); }
+  .spin{ width:40px; height:40px; border:4px solid var(--line); border-top-color:var(--main); border-radius:50%; margin:0 auto 16px; animation:spin 1s linear infinite; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  .rate-big{ font-family:var(--serif); font-size:calc(44px*var(--fs)); font-weight:700; color:var(--main); text-align:center; }
+  .rate-lbl{ text-align:center; color:var(--sub); font-size:calc(13px*var(--fs)); margin-bottom:6px; }
+  table.review{ width:100%; border-collapse:collapse; font-size:calc(13px*var(--fs)); }
+  table.review th, table.review td{ padding:8px 6px; border-bottom:1px solid var(--line); text-align:left; }
+  table.review th{ color:var(--main); font-weight:700; }
+</style>
+</head>
+<body>
+<header>
+  <h1>国試〇×問題集</h1>
+  <div class="fs-ctrl">
+    <button class="fs-minus" id="fsMinus" title="文字を小さく" aria-label="文字を小さく">A−</button>
+    <span class="fs-label" id="fsLabel">標準</span>
+    <button class="fs-plus" id="fsPlus" title="文字を大きく" aria-label="文字を大きく">A＋</button>
+  </div>
+  <button onclick="window.open('./manual.html','_blank')" title="使用説明書" style="position:absolute;top:12px;right:12px;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.12);color:#fff;border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;white-space:nowrap">📖 説明書</button>
+</header>
+
+<div class="wrap">
+
+  <!-- ===== ホーム ===== -->
+  <div id="home" class="screen active">
+    <div class="stats" style="grid-template-columns:repeat(3,1fr);">
+      <div class="stat-box"><div class="num" id="st-total">0</div><div class="lbl">総問題数</div></div>
+      <div class="stat-box"><div class="num" id="st-answered">0</div><div class="lbl">解答済み</div></div>
+      <div class="stat-box"><div class="num" id="st-due" style="color:#ff9800;">0</div><div class="lbl">復習対象</div></div>
+    </div>
+
+    <button class="menu-btn" onclick="goDailySetup()">
+      <span class="ico">📅</span><span class="label">今日の演習</span>
+      <div class="desc">全科目から分散して未出題優先で出題</div>
+    </button>
+    <button class="menu-btn" onclick="startMode('review')">
+      <span class="ico">🔄</span><span class="label">復習モード</span>
+      <div class="desc">忘却曲線に基づき出題</div>
+    </button>
+    <button class="menu-btn" onclick="goSubjectSelect()">
+      <span class="ico">📚</span><span class="label">科目別演習</span>
+      <div class="desc">科目を選んで集中学習</div>
+    </button>
+  </div>
+
+  <!-- ===== 今日の演習セットアップ ===== -->
+  <div id="daily-setup" class="screen">
+    <div class="card">
+      <h2>今日の演習</h2>
+      <div style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:12px;">未出題・復習対象を優先して、全科目から分散して出題します。問題数を選んでください。</div>
+      <div class="daily-count-row" id="daily-count-row">
+        <button class="count-btn" data-n="10">10問</button>
+        <button class="count-btn active" data-n="20">20問</button>
+        <button class="count-btn" data-n="30">30問</button>
+        <button class="count-btn" data-n="50">50問</button>
+      </div>
+      <div class="nav-row" style="margin-top:16px;">
+        <button class="btn outline" onclick="showScreen('home')">もどる</button>
+        <button class="btn" onclick="startDailyMode()">演習を開始</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 科目選択 ===== -->
+  <div id="subjects" class="screen">
+    <div class="card">
+      <h2>科目を選択</h2>
+      <div id="subject-list"></div>
+      <button class="btn outline" style="width:100%;margin-top:8px;" onclick="showScreen('home')">もどる</button>
+    </div>
+  </div>
+
+  <!-- ===== 出題画面 ===== -->
+  <div id="quiz" class="screen">
+    <div class="progress-info">
+      <span id="q-progress">1 / 1</span> 問目　|　このセッション正答率 <span id="q-rate">0%</span>
+      <div class="bar"><i id="q-bar" style="width:0%"></i></div>
+    </div>
+    <div class="card">
+      <div class="question-meta" id="q-meta"></div>
+      <div class="q-text" id="q-text"></div>
+
+      <div id="result-banner" class="result-banner"></div>
+
+      <div class="ox-row">
+        <button class="ox-btn maru" id="btn-maru" onclick="answer('○')">〇<span class="cap">正しい</span></button>
+        <button class="ox-btn batsu" id="btn-batsu" onclick="answer('×')">✕<span class="cap">誤り</span></button>
+      </div>
+
+      <div class="answer-area" id="answer-area">
+        <h3>解説</h3>
+        <div class="content" id="q-explanation"></div>
+      </div>
+
+      <div class="nav-row" id="quiz-nav" style="display:none;">
+        <button class="btn secondary" onclick="quitQuiz()">終了</button>
+        <button class="btn" id="next-btn" onclick="nextQuestion()">次の問題 →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== セッション結果 ===== -->
+  <div id="result" class="screen">
+    <div class="card">
+      <h2>セッション結果</h2>
+      <div class="rate-lbl">正答率</div>
+      <div class="rate-big" id="res-rate">0%</div>
+      <div class="stats" style="margin-top:16px;">
+        <div class="stat-box"><div class="num" id="res-total">0</div><div class="lbl">出題</div></div>
+        <div class="stat-box"><div class="num" id="res-correct" style="color:var(--ok)">0</div><div class="lbl">正解</div></div>
+        <div class="stat-box"><div class="num" id="res-wrong" style="color:var(--ng)">0</div><div class="lbl">不正解</div></div>
+      </div>
+      <div class="nav-row" style="margin-top:16px;">
+        <button class="btn outline" onclick="showScreen('home')">ホームへ</button>
+        <button class="btn" onclick="restartSame()">同じ条件でもう一度</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 成績 ===== -->
+  <div id="stats" class="screen">
+    <div class="card">
+      <div class="stats" style="grid-template-columns:repeat(3,1fr);">
+        <div class="stat-box"><div class="num" id="all-answered">0</div><div class="lbl">解答済み</div></div>
+        <div class="stat-box"><div class="num" id="all-mastered" style="color:#2196f3;">0</div><div class="lbl">習得(Lv4以上)</div></div>
+        <div class="stat-box"><div class="num" id="all-due" style="color:#ff9800;">0</div><div class="lbl">本日の復習対象</div></div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>📈 復習の進度</h2>
+      <div style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:12px;">忘却曲線レベルごとの問題数(数値が高いほど習得が進んでいる)</div>
+      <div id="stats-interval-list"></div>
+    </div>
+    <div class="card">
+      <h2>📚 科目別 学習進度</h2>
+      <div style="font-size:calc(12px*var(--fs));color:var(--sub);margin-bottom:10px;">忘却曲線レベル別の問題分布。色が右に進むほど習得が進んでいます。</div>
+      <div id="stats-subject-legend" style="margin-bottom:10px;"></div>
+      <div id="subject-stats"><div class="empty-state">まだ記録がありません</div></div>
+    </div>
+  </div>
+
+  <!-- ===== 設定 ===== -->
+  <div id="settings" class="screen">
+    <div class="card">
+      <h2>問題データ</h2>
+      <div id="mb-data-info" style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:12px;">問題データ: —</div>
+      <button class="menu-btn" onclick="mbReimport()"><span class="ico">📥</span><span class="label">問題データを取り込む / 更新する</span>
+        <div class="desc">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div></button>
+    </div>
+    <div class="card">
+      <h2>学習履歴の管理</h2>
+      <div style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:12px;">学習履歴（忘却曲線・解答記録）は、この端末内に保存されています。バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>
+      <button class="menu-btn" onclick="resetProgress()"><span class="ico">🗑️</span><span class="label">学習履歴をリセット</span>
+        <div class="desc">解答記録・忘却曲線をすべて消去（元に戻せません）</div></button>
+    </div>
+    <div class="card">
+      <h2>ℹ️ アプリ情報</h2>
+      <div style="padding:6px 2px;font-size:calc(13px*var(--fs));line-height:2;color:var(--sub);">
+        <div>あん摩マッサージ指圧師・はり師きゅう師 国家試験 〇×問題集</div>
+        <div>バージョン情報・更新は統合ホーム画面で管理されます。</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="bottom-nav">
+  <button class="nav-btn active" id="nav-home" onclick="showScreen('home')"><span class="ico">🏠</span>ホーム</button>
+  <button class="nav-btn" id="nav-stats" onclick="openStats()"><span class="ico">📊</span>成績</button>
+  <button class="nav-btn" id="nav-settings" onclick="openSettings()"><span class="ico">⚙️</span>設定</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ====== 文字サイズ調整（A-/A+）：--fs を拡縮し localStorage に保存 ====== */
+(function(){
+  const fsSteps=[0.85,1.0,1.15,1.3,1.45];
+  const fsNames=['小','標準','大','特大','最大'];
+  const FS_KEY='marubatsu-fs-idx';
+  let fsIdx=1;
+  try{ const s=parseInt(localStorage.getItem(FS_KEY),10); if(!isNaN(s)&&s>=0&&s<fsSteps.length) fsIdx=s; }catch(e){}
+  function applyFs(){
+    document.documentElement.style.setProperty('--fs', fsSteps[fsIdx]);
+    const lbl=document.getElementById('fsLabel'); if(lbl) lbl.textContent=fsNames[fsIdx];
+    try{ localStorage.setItem(FS_KEY, fsIdx); }catch(e){}
+  }
+  const minus=document.getElementById('fsMinus'), plus=document.getElementById('fsPlus');
+  if(minus) minus.onclick=()=>{ if(fsIdx>0){ fsIdx--; applyFs(); } };
+  if(plus)  plus.onclick=()=>{ if(fsIdx<fsSteps.length-1){ fsIdx++; applyFs(); } };
+  applyFs();
+})();
+
+/* ====== 状態 ====== */
+let ALL = [];               // 全問題
+let YEAR_LABELS = {};       // year値 → 表示ラベル
+let PROGRESS = {};          // questionId -> {questionId,correctCount,incorrectCount,intervalLevel,lastResult,lastAnsweredAt,nextReviewAt}
+let dailyCount = 20;        // 今日の演習の問題数
+
+let session = null;         // {queue, idx, correct, wrong, answered, mode, subject}
+
+const INTERVALS = [2, 3, 7, 14, 30]; // 連続正解時の日数（Lv1→2日, Lv2→3日, Lv3→7日, Lv4→14日, Lv5→30日）
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+/* ====== 進捗（忘却曲線）: IndexedDB 'progress' ストアに保存 ====== */
+function pgGetAll(){
+  return new Promise((resolve)=>{
+    if(!_mbdb){ resolve([]); return; }
+    const tx=_mbdb.transaction('progress','readonly'); const r=tx.objectStore('progress').getAll();
+    r.onsuccess=()=>resolve(r.result||[]); r.onerror=()=>resolve([]);
+  });
+}
+function pgPut(rec){
+  return new Promise((resolve)=>{
+    if(!_mbdb){ resolve(); return; }
+    const tx=_mbdb.transaction('progress','readwrite'); tx.objectStore('progress').put(rec);
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>resolve();
+  });
+}
+function pgClear(){
+  return new Promise((resolve)=>{
+    if(!_mbdb){ resolve(); return; }
+    const tx=_mbdb.transaction('progress','readwrite'); tx.objectStore('progress').clear();
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>resolve();
+  });
+}
+async function loadProgressAll(){
+  const list = await pgGetAll();
+  PROGRESS = {};
+  list.forEach(p=>{ PROGRESS[p.questionId]=p; });
+}
+// 解答結果を保存（忘却曲線を更新）
+async function saveProgress(qid, isCorrect){
+  const today = new Date();
+  const cur = PROGRESS[qid] || { questionId:qid, correctCount:0, incorrectCount:0, intervalLevel:0, lastResult:null, lastAnsweredAt:null, nextReviewAt:null };
+  cur.lastAnsweredAt = today.toISOString();
+  cur.lastResult = isCorrect ? 'correct' : 'incorrect';
+  if(isCorrect){
+    cur.correctCount++;
+    cur.intervalLevel = Math.min(cur.intervalLevel + 1, INTERVALS.length);
+    const days = INTERVALS[cur.intervalLevel - 1];
+    const next = new Date(today); next.setDate(next.getDate()+days);
+    cur.nextReviewAt = next.toISOString().slice(0,10);
+  }else{
+    cur.incorrectCount++;
+    cur.intervalLevel = 0;
+    cur.nextReviewAt = today.toISOString().slice(0,10); // 当日中に再出題
+  }
+  PROGRESS[qid] = cur;
+  await pgPut(cur);
+}
+
+/* ====== データ読み込み ======
+   ・問題データは「取り込み」で端末（IndexedDB）に保存する（オフライン可）。
+   ・通信は一切しない。データ更新はファイルの再取り込みで行う。 */
+const MB_DB = 'MarubatsuDB';
+let _mbdb = null;
+
+function mbOpenDB(){
+  return new Promise((resolve, reject)=>{
+    const req = indexedDB.open(MB_DB, 4); // v4: questionData ストア追加（取り込んだ問題を端末保存）
+    req.onupgradeneeded = (e)=>{
+      const db = e.target.result;
+      // 旧バージョンの questions ストアは使わない
+      if(db.objectStoreNames.contains('questions')) db.deleteObjectStore('questions');
+      if(!db.objectStoreNames.contains('meta')) db.createObjectStore('meta', { keyPath:'key' });
+      if(!db.objectStoreNames.contains('progress')) db.createObjectStore('progress', { keyPath:'questionId' });
+      if(!db.objectStoreNames.contains('questionData')) db.createObjectStore('questionData', { keyPath:'key' });
+    };
+    req.onsuccess = ()=>resolve(req.result);
+    req.onerror = ()=>reject(req.error);
+  });
+}
+function mbGetAll(store){
+  return new Promise((resolve,reject)=>{
+    const tx=_mbdb.transaction(store,'readonly'); const r=tx.objectStore(store).getAll();
+    r.onsuccess=()=>resolve(r.result||[]); r.onerror=()=>reject(r.error);
+  });
+}
+function mbGet(store, key){
+  return new Promise((resolve)=>{
+    if(!_mbdb.objectStoreNames.contains(store)){ resolve(null); return; }
+    const tx=_mbdb.transaction(store,'readonly'); const r=tx.objectStore(store).get(key);
+    r.onsuccess=()=>resolve(r.result||null); r.onerror=()=>resolve(null);
+  });
+}
+function mbPut(store, value){
+  return new Promise((resolve,reject)=>{
+    const tx=_mbdb.transaction(store,'readwrite'); const r=tx.objectStore(store).put(value);
+    r.onsuccess=()=>resolve(); r.onerror=()=>reject(r.error);
+  });
+}
+
+// 取り込み済みの問題データを端末から読み込む（オフライン可）
+async function mbLoadQuestions(){
+  try{
+    const rec = await mbGet('questionData', 'current');
+    if(rec && Array.isArray(rec.questions) && rec.questions.length>0){
+      ALL = rec.questions;
+      return true;
+    }
+    return false;
+  }catch(e){ console.warn('問題データ読み込み失敗:', e.message); return false; }
+}
+
+// ファイル選択で marubatsu_questions.json を取り込む
+function mbImportFile(ev){
+  const file = ev && ev.target && ev.target.files && ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async ()=>{
+    try{
+      const json = JSON.parse(reader.result);
+      const arr = json && json.questions;
+      if(!Array.isArray(arr) || arr.length===0){
+        alert('問題データが見つかりませんでした。\nmarubatsu_questions.json を選択してください。');
+        return;
+      }
+      await mbPut('questionData', { key:'current', questions:arr, importedAt:new Date().toISOString() });
+      ALL = arr;
+      mbHideImportPrompt();
+      buildFilters();
+      refreshHome();
+      toast(arr.length + '問を取り込みました');
+    }catch(e){
+      alert('ファイルの読み込みに失敗しました: '+e.message);
+    }finally{
+      if(ev && ev.target) ev.target.value='';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// 取り込み案内オーバーレイ
+function mbShowImportPrompt(){
+  let ov = document.getElementById('mb-import-prompt');
+  if(!ov){
+    ov = document.createElement('div');
+    ov.id = 'mb-import-prompt';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 24px;background:#f4efe4;font-family:sans-serif;color:#2c3e50;';
+    ov.innerHTML =
+      '<div style="font-size:46px;margin-bottom:14px;">📥</div>' +
+      '<h2 style="margin-bottom:12px;font-size:20px;">問題データを取り込んでください</h2>' +
+      '<p style="color:#7a8a99;line-height:1.8;max-width:30em;margin-bottom:20px;">' +
+      '初回のみ、配布された <b>marubatsu_questions.json</b> を取り込みます。<br>' +
+      '取り込んだデータは端末内に保存され、次回からはオフラインでも使えます。</p>' +
+      '<button id="mb-import-btn" style="border:none;background:#1f6e7a;color:#fff;font-size:15px;font-weight:700;padding:13px 26px;border-radius:11px;cursor:pointer;">📂 marubatsu_questions.json を選ぶ</button>' +
+      '<input type="file" id="mb-import-file" accept="application/json,.json" style="display:none">';
+    document.body.appendChild(ov);
+    ov.querySelector('#mb-import-btn').onclick = ()=> ov.querySelector('#mb-import-file').click();
+    ov.querySelector('#mb-import-file').onchange = mbImportFile;
+  }
+  ov.style.display = 'flex';
+}
+function mbHideImportPrompt(){
+  const ov = document.getElementById('mb-import-prompt');
+  if(ov) ov.style.display = 'none';
+}
+// 設定などからの再取り込み導線
+function mbReimport(){
+  let inp = document.getElementById('mb-reimport-file');
+  if(!inp){
+    inp = document.createElement('input');
+    inp.type='file'; inp.id='mb-reimport-file'; inp.accept='application/json,.json';
+    inp.style.display='none'; inp.onchange = mbImportFile;
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+
+async function loadData(){
+  _mbdb = await mbOpenDB();
+  // 端末の保存をできるだけ消えにくくする（対応ブラウザのみ）
+  try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
+  await loadProgressAll();
+  const ok = await mbLoadQuestions();
+  if(!ok || ALL.length === 0){
+    // 未取り込み：取り込み案内を表示（通信不要）
+    mbShowImportPrompt();
+    return;
+  }
+  buildFilters();
+  refreshHome();
+}
+
+// 自動のオンライン確認は行わない（データは取り込み済み・オフラインで動作）。
+
+function buildFilters(){
+  // 年度ラベル
+  const years = [];
+  ALL.forEach(q=>{ if(!years.includes(String(q.year))) years.push(String(q.year)); });
+  years.forEach(y=>{ YEAR_LABELS[y] = /^\d+$/.test(y) ? ('第'+y+'回') : y; });
+  // 科目別リスト（科目別演習）
+  const subjects = [...new Set(ALL.map(q=>q.subject))].sort();
+  const list = document.getElementById('subject-list');
+  if(list){
+    list.innerHTML = '';
+    subjects.forEach(s=>{
+      const cnt = ALL.filter(q=>q.subject===s).length;
+      const div = document.createElement('div');
+      div.className='subject-item';
+      div.innerHTML = `<span>${s}</span><span class="count">${cnt}問</span>`;
+      div.onclick = ()=> startSubject(s);
+      list.appendChild(div);
+    });
+  }
+}
+
+/* ====== 画面遷移 ====== */
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  document.getElementById('nav-home').classList.toggle('active', id!=='stats' && id!=='settings');
+  document.getElementById('nav-stats').classList.toggle('active', id==='stats');
+  const ns=document.getElementById('nav-settings'); if(ns) ns.classList.toggle('active', id==='settings');
+  if(id==='home') refreshHome();   // ホームに戻るたびに復習対象数などを最新化
+  window.scrollTo(0,0);
+}
+function openStats(){ refreshStats(); showScreen('stats'); }
+function openSettings(){
+  showScreen('settings');
+  const el = document.getElementById('mb-data-info');
+  if(el) el.textContent = '問題データ: ' + (ALL && ALL.length ? (ALL.length + '問（取り込み済み）') : '未取り込み');
+}
+function goSubjectSelect(){ showScreen('subjects'); }
+
+/* ====== 今日の演習セットアップ ====== */
+function goDailySetup(){
+  showScreen('daily-setup');
+  // ボタンのクリックハンドラ
+  document.querySelectorAll('#daily-count-row .count-btn').forEach(b=>{
+    b.onclick = ()=>{
+      document.querySelectorAll('#daily-count-row .count-btn').forEach(x=>x.classList.remove('active'));
+      b.classList.add('active'); dailyCount = parseInt(b.dataset.n);
+    };
+  });
+}
+
+/* ====== 出題開始 ====== */
+function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+// 今日の演習：未出題・復習対象を優先し、全科目から分散して出題
+function startDailyMode(){
+  const today = todayStr();
+  const unseen = [], due = [], rest = [];
+  ALL.forEach(q=>{
+    const p = PROGRESS[q.id];
+    if(!p || !p.lastAnsweredAt) unseen.push(q);
+    else if(p.nextReviewAt && p.nextReviewAt <= today) due.push(q);
+    else rest.push(q);
+  });
+  // 未出題を優先、次に復習対象、それでも足りなければその他
+  let queue = shuffle(unseen).concat(shuffle(due)).concat(shuffle(rest));
+  queue = queue.slice(0, dailyCount);
+  if(queue.length===0){ toast('出題できる問題がありません'); return; }
+  beginSession(queue, {mode:'daily'});
+}
+
+// 復習モード：忘却曲線に基づき、復習対象（nextReviewAt<=今日）を優先
+function startMode(mode){
+  if(mode!=='review') return;
+  const today = todayStr();
+  let dueList = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt <= today; });
+  if(dueList.length===0){
+    // 復習対象が無ければ、間違えたことのある問題を出題
+    dueList = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.incorrectCount>0; });
+  }
+  if(dueList.length===0){ toast('今は復習対象の問題がありません'); return; }
+  // nextReviewAt の早い順
+  dueList.sort((a,b)=>{
+    const da=(PROGRESS[a.id]&&PROGRESS[a.id].nextReviewAt)||'9999-12-31';
+    const db=(PROGRESS[b.id]&&PROGRESS[b.id].nextReviewAt)||'9999-12-31';
+    return da<db?-1:da>db?1:0;
+  });
+  beginSession(dueList.slice(0,50), {mode:'review'});
+}
+
+// 科目別演習
+function startSubject(subject){
+  const pool = ALL.filter(q=>q.subject===subject);
+  if(pool.length===0){ toast('該当する問題がありません'); return; }
+  // 未出題→復習対象→その他 の順で出題
+  const today = todayStr();
+  const unseen=[], due=[], rest=[];
+  pool.forEach(q=>{ const p=PROGRESS[q.id];
+    if(!p||!p.lastAnsweredAt) unseen.push(q);
+    else if(p.nextReviewAt && p.nextReviewAt<=today) due.push(q);
+    else rest.push(q);
+  });
+  const queue = shuffle(unseen).concat(shuffle(due)).concat(shuffle(rest)).slice(0,50);
+  beginSession(queue, {mode:'subject', subject});
+}
+
+function beginSession(queue, meta){
+  session = { queue, idx:0, correct:0, wrong:0, answered:0, meta };
+  showScreen('quiz');
+  renderQuestion();
+}
+
+/* ====== 問題描画 ====== */
+function renderQuestion(){
+  const q = session.queue[session.idx];
+  const meta = document.getElementById('q-meta');
+  const examLabel = q.examType==='amashi' ? 'あマ指' : 'はりきゅう';
+  const examCls = q.examType==='amashi' ? 'exam-type amashi' : 'exam-type';
+  const yLabel = YEAR_LABELS[String(q.year)] || q.year;
+  // 忘却曲線レベルのバッジ
+  const p = PROGRESS[q.id];
+  const lv = p ? Math.min(p.intervalLevel||0,5) : 0;
+  const lvLabels=['未学習','Lv1','Lv2','Lv3','Lv4','Lv5'];
+  meta.innerHTML =
+    `<span class="badge ${examCls}">${examLabel}</span>`+
+    `<span class="badge subject">${q.subject}</span>`+
+    `<span>${yLabel}</span>`+
+    `<span class="badge" style="background:#eef1f4;color:#555;">${lvLabels[lv]}</span>`;
+  document.getElementById('q-text').textContent = q.questionText;
+
+  document.getElementById('result-banner').style.display='none';
+  document.getElementById('answer-area').style.display='none';
+  document.getElementById('quiz-nav').style.display='none';
+  const bm=document.getElementById('btn-maru'), bb=document.getElementById('btn-batsu');
+  [bm,bb].forEach(b=>{ b.disabled=false; b.classList.remove('chosen'); });
+
+  document.getElementById('q-progress').textContent = (session.idx+1)+' / '+session.queue.length;
+  const rate = session.answered ? Math.round(session.correct/session.answered*100) : 0;
+  document.getElementById('q-rate').textContent = rate+'%';
+  document.getElementById('q-bar').style.width = (session.idx/session.queue.length*100)+'%';
+}
+
+function answer(choice){
+  const q = session.queue[session.idx];
+  const correct = (choice === q.correctAnswer);
+  const bm=document.getElementById('btn-maru'), bb=document.getElementById('btn-batsu');
+  bm.disabled=true; bb.disabled=true;
+  (choice==='○'?bm:bb).classList.add('chosen');
+
+  const banner = document.getElementById('result-banner');
+  banner.style.display='block';
+  if(correct){ banner.className='result-banner correct'; banner.textContent='正解！　答え：'+q.correctAnswer; }
+  else{ banner.className='result-banner incorrect'; banner.textContent='不正解　正答：'+q.correctAnswer; }
+  document.getElementById('q-explanation').textContent = q.explanation || '（解説なし）';
+  document.getElementById('answer-area').style.display='block';
+  document.getElementById('quiz-nav').style.display='flex';
+
+  session.answered++;
+  if(correct){ session.correct++; } else { session.wrong++; }
+  saveProgress(q.id, correct); // 忘却曲線を更新
+
+  if(session.idx >= session.queue.length-1){ document.getElementById('next-btn').textContent='結果を見る'; }
+}
+
+function nextQuestion(){
+  if(session.idx >= session.queue.length-1){ finishSession(); return; }
+  session.idx++; renderQuestion(); window.scrollTo(0,0);
+}
+function quitQuiz(){ finishSession(); }
+
+function finishSession(){
+  const t=session.answered, c=session.correct, w=session.wrong;
+  document.getElementById('res-total').textContent=t;
+  document.getElementById('res-correct').textContent=c;
+  document.getElementById('res-wrong').textContent=w;
+  document.getElementById('res-rate').textContent = t ? Math.round(c/t*100)+'%' : '–';
+  showScreen('result');
+  refreshHome();
+}
+function restartSame(){
+  const m = session.meta;
+  if(m.mode==='daily') startDailyMode();
+  else if(m.mode==='review') startMode('review');
+  else if(m.mode==='subject') startSubject(m.subject);
+  else showScreen('home');
+}
+
+/* ====== 表示更新 ====== */
+function refreshHome(){
+  const today = todayStr();
+  const total = ALL.length;
+  const answered = Object.values(PROGRESS).filter(p=>p.lastAnsweredAt).length;
+  const due = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt<=today; }).length;
+  document.getElementById('st-total').textContent = total;
+  document.getElementById('st-answered').textContent = answered;
+  document.getElementById('st-due').textContent = due;
+}
+
+function refreshStats(){
+  const today = todayStr();
+  const plist = Object.values(PROGRESS);
+  const answered = plist.filter(p=>p.lastAnsweredAt).length;
+  const mastered = plist.filter(p=>(p.intervalLevel||0)>=4).length;
+  const due = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt<=today; }).length;
+  document.getElementById('all-answered').textContent = answered;
+  document.getElementById('all-mastered').textContent = mastered;
+  document.getElementById('all-due').textContent = due;
+
+  const levelColors=['#e0e0e0','#f44336','#ffc107','#8bc34a','#4caf50','#2196f3'];
+  const levelLabels=['未学習(レベル0)','レベル1(2日後)','レベル2(3日後)','レベル3(7日後)','レベル4(14日後)','レベル5(30日後)'];
+  // 全問をレベル別に集計（未学習=PROGRESSに無い or intervalLevel 0）
+  const counts=[0,0,0,0,0,0];
+  ALL.forEach(q=>{ const p=PROGRESS[q.id]; const lv=p?Math.min(p.intervalLevel||0,5):0; counts[lv]++; });
+  const maxc = Math.max(1, ...counts);
+  let il='';
+  for(let i=0;i<6;i++){
+    const pct = Math.round(counts[i]/maxc*100);
+    il += `<div class="interval-row"><div class="il-lbl">${levelLabels[i]}</div>`+
+          `<div class="il-bar"><i style="width:${pct}%;background:${levelColors[i]};"></i></div>`+
+          `<div class="il-num">${counts[i]}</div></div>`;
+  }
+  document.getElementById('stats-interval-list').innerHTML = il;
+
+  // 凡例
+  const shortLabels=['未学習','Lv1','Lv2','Lv3','Lv4','Lv5'];
+  let legend='<div style="display:flex;flex-wrap:wrap;gap:10px;font-size:calc(11px*var(--fs));color:#555;">';
+  shortLabels.forEach((lbl,i)=>{ legend+=`<span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:${levelColors[i]};border-radius:2px;"></span>${lbl}</span>`; });
+  legend+='</div>';
+  document.getElementById('stats-subject-legend').innerHTML = legend;
+
+  // 科目別 学習進度（レベル別積み上げ）
+  const subjStats={};
+  ALL.forEach(q=>{
+    if(!subjStats[q.subject]) subjStats[q.subject]={ totalQ:0, levelCounts:[0,0,0,0,0,0] };
+    const p=PROGRESS[q.id]; const lv=p?Math.min(p.intervalLevel||0,5):0;
+    subjStats[q.subject].levelCounts[lv]++; subjStats[q.subject].totalQ++;
+  });
+  const weights=[0,20,40,60,80,100];
+  const box=document.getElementById('subject-stats');
+  const subs=Object.keys(subjStats).sort((a,b)=>{
+    const sa=subjStats[a].levelCounts.reduce((s,c,i)=>s+c*weights[i],0)/subjStats[a].totalQ;
+    const sb=subjStats[b].levelCounts.reduce((s,c,i)=>s+c*weights[i],0)/subjStats[b].totalQ;
+    return sb-sa;
+  });
+  if(subs.length===0){ box.innerHTML='<div class="empty-state">まだ記録がありません</div>'; return; }
+  let html='';
+  subs.forEach(s=>{
+    const st=subjStats[s];
+    const score=Math.round(st.levelCounts.reduce((sum,c,i)=>sum+c*weights[i],0)/st.totalQ);
+    let seg='';
+    st.levelCounts.forEach((c,i)=>{
+      if(c===0) return;
+      const pct=c/st.totalQ*100;
+      seg+=`<div title="${shortLabels[i]}: ${c}問" style="height:100%;width:${pct}%;background:${levelColors[i]};display:flex;align-items:center;justify-content:center;font-size:calc(10px*var(--fs));color:#fff;font-weight:600;">${c>=Math.max(2,st.totalQ*0.06)?c:''}</div>`;
+    });
+    html+=`<div class="subj-prog"><div class="sp-head"><span>${s}</span><span style="color:var(--sub)">進度 ${score}% / 全${st.totalQ}問</span></div><div class="sp-bar">${seg}</div></div>`;
+  });
+  box.innerHTML=html;
+}
+
+async function resetProgress(){
+  if(!confirm('学習履歴（忘却曲線・解答記録）をすべて消去します。よろしいですか？')) return;
+  await pgClear();
+  PROGRESS={};
+  refreshHome(); refreshStats();
+  toast('学習履歴をリセットしました');
+}
+
+/* ====== トースト ====== */
+let toastTimer=null;
+function toast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer=setTimeout(()=>t.classList.remove('show'),2000);
+}
+
+/* ====== 起動 ====== */
+loadData();
+</script>
+</body>
+</html>

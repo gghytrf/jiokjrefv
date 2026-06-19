@@ -1,0 +1,1432 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>国試学習アプリ 使用説明書 ver.2026.6.1</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Noto+Serif+JP:wght@400;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:   #1e3a4f;
+  --primary:#2c5f7c;
+  --mid:    #5a8fa8;
+  --light:  #eef4f8;
+  --gold:   #c8963e;
+  --gold-lt:#fdf3e2;
+  --green:  #3d9970;
+  --green-lt:#e8f5ee;
+  --amber:  #e09b2d;
+  --amber-lt:#fff8e1;
+  --red:    #c0392b;
+  --red-lt: #fdf0ee;
+  --purple: #5e35b1;
+  --purple-lt:#ede7f6;
+  --text:   #1a2a35;
+  --muted:  #5a7080;
+  --border: #d0dce5;
+  --bg:     #f5f8fa;
+  --white:  #ffffff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Noto Sans JP',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.85;
+  font-size:14px;
+}
+
+/* ========== COVER ========== */
+.cover{
+  min-height:100vh;
+  background:linear-gradient(160deg,#0f2333 0%,#1e3a4f 40%,#2c5f7c 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:80px 40px;position:relative;overflow:hidden;
+}
+.cover::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%,rgba(90,143,168,.12) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(200,150,62,.08) 0%,transparent 60%);
+}
+/* 格子模様 */
+.cover::after{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.cover-inner{position:relative;z-index:1;max-width:640px}
+.cover-eyebrow{
+  display:inline-block;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:20px;padding:5px 20px;
+  font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.7);
+  margin-bottom:32px;font-family:'DM Mono',monospace;
+}
+.cover h1{
+  font-family:'Noto Serif JP',serif;
+  font-size:44px;font-weight:700;line-height:1.25;
+  color:#fff;margin-bottom:16px;letter-spacing:1px;
+}
+.cover h1 em{color:#7ec8e3;font-style:normal}
+.cover-sub{font-size:15px;color:rgba(255,255,255,.65);margin-bottom:10px}
+.cover-ver{
+  display:block;text-align:center;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  border-radius:6px;padding:4px 16px;font-size:12px;
+  font-family:'DM Mono',monospace;color:rgba(255,255,255,.8);
+  margin:0 auto 48px;letter-spacing:1px;width:fit-content;
+}
+.cover-chips{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:48px;max-width:440px;margin-left:auto;margin-right:auto;
+}
+.chip{
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;padding:10px 18px;font-size:12px;color:rgba(255,255,255,.85);
+}
+.chip strong{display:block;font-size:14px;margin-bottom:2px;color:#fff}
+.cover-credits{
+  font-size:12px;color:rgba(255,255,255,.45);line-height:2;
+  border-top:1px solid rgba(255,255,255,.1);padding-top:20px;margin-top:0;
+}
+
+/* ========== 大外ラッパー ========== */
+.wrap{max-width:900px;margin:0 auto;padding:0 32px}
+
+/* ========== 目次 ========== */
+.toc-section{background:var(--navy);color:#fff;padding:60px 0}
+.toc-section .wrap{}
+.toc-section h2{font-size:13px;letter-spacing:3px;font-family:'DM Mono',monospace;color:var(--mid);margin-bottom:28px;text-transform:uppercase}
+.toc-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:4px;
+}
+.toc-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-radius:8px;
+  text-decoration:none;color:rgba(255,255,255,.75);
+  transition:background .2s,color .2s;font-size:13px;
+}
+.toc-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.toc-num{
+  width:26px;height:26px;border-radius:6px;
+  background:rgba(90,143,168,.3);color:var(--mid);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;
+}
+
+/* ========== セクション共通 ========== */
+.section{padding:72px 0;border-bottom:1px solid var(--border)}
+.section-header{
+  display:flex;align-items:flex-start;gap:20px;margin-bottom:36px;
+}
+.sec-num{
+  width:56px;height:56px;border-radius:14px;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;flex-shrink:0;
+  font-family:'DM Mono',monospace;
+  box-shadow:0 4px 16px rgba(44,95,124,.3);
+}
+.section-header-text{}
+.section-header-text h2{font-size:26px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.section-header-text p{font-size:13px;color:var(--muted)}
+
+/* ========== SVGイラストエリア ========== */
+.svg-wrap{
+  display:flex;justify-content:center;margin:32px 0;
+}
+.svg-wrap svg{max-width:100%;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1)}
+
+/* ========== Callout ========== */
+.callout{
+  display:flex;gap:14px;border-radius:12px;padding:16px 20px;margin:20px 0;
+}
+.callout-info  {background:var(--light);border-left:4px solid var(--primary)}
+.callout-warn  {background:var(--amber-lt);border-left:4px solid var(--amber)}
+.callout-tip   {background:var(--green-lt);border-left:4px solid var(--green)}
+.callout-purple{background:var(--purple-lt);border-left:4px solid var(--purple)}
+.callout-red   {background:var(--red-lt);border-left:4px solid var(--red)}
+.callout .ico{font-size:22px;flex-shrink:0;margin-top:1px}
+.callout .body h4{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--navy)}
+.callout .body p{font-size:13px;color:var(--muted);line-height:1.75}
+.callout .body p a{color:var(--primary)}
+
+/* ========== ステップ ========== */
+.steps{display:flex;flex-direction:column;gap:14px;margin:20px 0}
+.step{
+  display:flex;gap:16px;background:var(--white);
+  border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.step-n{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;flex-shrink:0;margin-top:1px;
+  font-family:'DM Mono',monospace;
+}
+.step-body h4{font-size:14px;font-weight:700;color:var(--primary);margin-bottom:5px}
+.step-body p{font-size:13px;color:var(--muted);line-height:1.75}
+
+/* ========== モードカード ========== */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}
+.mode-card{
+  background:var(--white);border:1px solid var(--border);
+  border-radius:14px;padding:22px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+  position:relative;overflow:hidden;
+}
+.mode-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+}
+.mode-card.c1::before{background:linear-gradient(90deg,var(--primary),var(--mid))}
+.mode-card.c2::before{background:linear-gradient(90deg,var(--green),#6dbf8f)}
+.mode-card.c3::before{background:linear-gradient(90deg,var(--gold),#e8b86a)}
+.mode-card.c4::before{background:linear-gradient(90deg,var(--purple),#8b6bd8)}
+.mode-icon{font-size:32px;margin-bottom:10px}
+.mode-card h3{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:8px}
+.mode-card p{font-size:12px;color:var(--muted);line-height:1.75}
+.tag{
+  display:inline-block;font-size:10px;padding:2px 10px;
+  border-radius:10px;margin-top:10px;font-weight:700;
+}
+.tag-blue  {background:var(--light);color:var(--primary)}
+.tag-green {background:var(--green-lt);color:var(--green)}
+.tag-gold  {background:var(--gold-lt);color:var(--gold)}
+.tag-purple{background:var(--purple-lt);color:var(--purple)}
+
+/* ========== テーブル ========== */
+.tbl{
+  width:100%;border-collapse:collapse;font-size:13px;
+  margin:16px 0;border-radius:12px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.tbl th{
+  background:var(--primary);color:#fff;
+  padding:10px 16px;text-align:left;font-size:12px;font-weight:600;
+}
+.tbl td{padding:10px 16px;border-bottom:1px solid var(--border)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:nth-child(even) td{background:var(--light)}
+.tbl td.r{text-align:right;font-weight:700;color:var(--primary);font-family:'DM Mono',monospace}
+
+/* ========== 忘却曲線レベルバッジ ========== */
+.lv{
+  display:inline-block;width:44px;text-align:center;
+  border-radius:6px;padding:2px 0;font-size:11px;font-weight:700;color:#fff;
+  font-family:'DM Mono',monospace;
+}
+.lv0{background:#9e9e9e}.lv1{background:#e53935}.lv2{background:#f9a825}
+.lv3{background:#7cb342}.lv4{background:#43a047}.lv5{background:#1e88e5}
+
+/* ========== 設定トグル ========== */
+.setting-card{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:16px 0}
+.setting-head{background:var(--primary);color:#fff;padding:10px 18px;font-size:13px;font-weight:700}
+.setting-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 18px;border-bottom:1px solid var(--border);
+}
+.setting-row:last-child{border-bottom:none}
+.setting-lbl{font-size:13px;font-weight:500}
+.setting-desc{font-size:11px;color:var(--muted);margin-top:1px}
+.toggle{
+  width:38px;height:22px;border-radius:11px;
+  background:var(--primary);position:relative;flex-shrink:0;
+}
+.toggle::after{
+  content:'';position:absolute;right:3px;top:3px;
+  width:16px;height:16px;border-radius:50%;background:#fff;
+}
+.toggle.off{background:#cbd5dc}
+.toggle.off::after{right:auto;left:3px}
+.badge-link{font-size:12px;color:var(--mid)}
+
+/* ========== 2カラム ========== */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+
+/* ========== スクリーンモック ========== */
+.phone-wrap{display:flex;justify-content:center;margin:24px 0}
+
+/* ========== h3 ========== */
+.sh3{
+  font-size:16px;font-weight:700;color:var(--primary);
+  margin:32px 0 14px;display:flex;align-items:center;gap:8px;
+}
+.sh3::before{
+  content:'';display:block;width:4px;height:18px;
+  border-radius:2px;background:var(--primary);flex-shrink:0;
+}
+
+/* ========== 本文 ========== */
+.prose{font-size:13px;color:var(--muted);line-height:1.85;margin-bottom:14px}
+.prose strong{color:var(--text)}
+
+/* ========== リンクリスト ========== */
+.link-list{list-style:none;margin:12px 0}
+.link-list li{padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.link-list li:last-child{border-bottom:none}
+.link-list a{color:var(--primary);word-break:break-all}
+
+/* ========== footer ========== */
+footer{
+  text-align:center;padding:48px 32px;color:var(--muted);font-size:12px;
+  border-top:1px solid var(--border);line-height:2;
+}
+footer a{color:var(--mid)}
+
+/* ========== responsive ========== */
+@media(max-width:640px){
+  .cover h1{font-size:30px}
+  .toc-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr}
+  .mode-grid{grid-template-columns:1fr}
+  .wrap{padding:0 16px}
+  .section{padding:48px 0}
+}
+</style>
+</head>
+<body>
+
+<!-- ========== 表紙 ========== -->
+<div class="cover">
+  <div class="cover-inner">
+    <div class="cover-eyebrow">USER MANUAL</div>
+    <h1>国試学習アプリ<br><em>使用説明書</em></h1>
+    <p class="cover-sub">はり師きゅう師・あん摩マッサージ指圧師 国家試験対策</p>
+    <div class="cover-ver">ver. 2026.6.1</div>
+
+    <div class="cover-chips">
+      <div class="chip"><strong>📚</strong>過去問 第1〜34回 収録</div>
+      <div class="chip"><strong>🧠</strong>忘却曲線で効率的復習</div>
+      <div class="chip"><strong>📝</strong>本試験形式 180/160問</div>
+      <div class="chip"><strong>🤖</strong>AI作成 第35回予想付き</div>
+    </div>
+    <div class="cover-credits">
+      制作者：大阪行岡医療専門学校長柄校　鍼灸科　75期生　藤本
+    </div>
+  </div>
+</div>
+
+<!-- ========== 目次 ========== -->
+<div class="toc-section">
+  <div class="wrap">
+    <h2>TABLE OF CONTENTS</h2>
+    <div class="toc-grid">
+      <a class="toc-item" href="#sec1"><span class="toc-num">01</span>アプリの基本情報・起動方法</a>
+      <a class="toc-item" href="#sec2"><span class="toc-num">02</span>同梱されている問題データ</a>
+      <a class="toc-item" href="#sec3"><span class="toc-num">03</span>ホーム画面の見方</a>
+      <a class="toc-item" href="#sec4"><span class="toc-num">04</span>各演習モードの使い方</a>
+      <a class="toc-item" href="#sec5"><span class="toc-num">05</span>問題演習画面の操作方法</a>
+      <a class="toc-item" href="#sec6"><span class="toc-num">06</span>本試験形式モード</a>
+      <a class="toc-item" href="#sec7"><span class="toc-num">07</span>AI作成問題の活用方法</a>
+      <a class="toc-item" href="#sec8"><span class="toc-num">08</span>統計画面の見方</a>
+      <a class="toc-item" href="#sec9"><span class="toc-num">09</span>設定画面</a>
+      <a class="toc-item" href="#sec10"><span class="toc-num">10</span>忘却曲線（復習スケジュール）の仕組み</a>
+      <a class="toc-item" href="#sec11"><span class="toc-num">11</span>学習データのバックアップ・引継ぎ</a>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 1 ========== -->
+<div class="section" id="sec1">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">01</div>
+      <div class="section-header-text">
+        <h2>アプリの基本情報・起動方法</h2>
+        <p>URLを開くだけで、すぐに学習を始められます</p>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="ico">ℹ️</div>
+      <div class="body">
+        <h4>このアプリについて</h4>
+        <p>はり師きゅう師・あん摩マッサージ指圧師（あマ指）国家試験の過去問を、忘却曲線に基づいて効率的に学習するためのウェブアプリです。一度開けばインターネット接続不要（オフライン対応）で、スマートフォン・PCのブラウザで動作します。問題データは初回のみ、配布された <strong>questions.json</strong> を「取り込み」して使います（取り込み後は端末内に保存され、オフラインでも利用できます）。</p>
+      </div>
+    </div>
+
+    <!-- SVG: 起動フロー -->
+    <div class="svg-wrap">
+      <svg width="700" height="130" viewBox="0 0 700 130" xmlns="http://www.w3.org/2000/svg">
+        <rect width="700" height="130" rx="14" fill="#eef4f8"/>
+        <!-- step1 -->
+        <rect x="18" y="22" width="148" height="86" rx="10" fill="#2c5f7c"/>
+        <text x="92" y="56" text-anchor="middle" fill="white" font-size="22">🔗</text>
+        <text x="92" y="80" text-anchor="middle" fill="white" font-size="11" font-weight="700">URLをブラウザで</text>
+        <text x="92" y="95" text-anchor="middle" fill="white" font-size="11" font-weight="700">開く</text>
+        <!-- arrow -->
+        <polygon points="174,57 192,65 174,73" fill="#2c5f7c"/>
+        <!-- step2 -->
+        <rect x="196" y="22" width="148" height="86" rx="10" fill="#5a8fa8"/>
+        <text x="270" y="56" text-anchor="middle" fill="white" font-size="22">⬇️</text>
+        <text x="270" y="80" text-anchor="middle" fill="white" font-size="11" font-weight="700">初回：問題データを</text>
+        <text x="270" y="95" text-anchor="middle" fill="white" font-size="11" font-weight="700">自動ダウンロード</text>
+        <!-- arrow -->
+        <polygon points="352,57 370,65 352,73" fill="#5a8fa8"/>
+        <!-- step3 -->
+        <rect x="374" y="22" width="148" height="86" rx="10" fill="#3d9970"/>
+        <text x="448" y="56" text-anchor="middle" fill="white" font-size="22">🏠</text>
+        <text x="448" y="80" text-anchor="middle" fill="white" font-size="11" font-weight="700">ホーム画面が</text>
+        <text x="448" y="95" text-anchor="middle" fill="white" font-size="11" font-weight="700">表示される</text>
+        <!-- arrow -->
+        <polygon points="530,57 548,65 530,73" fill="#3d9970"/>
+        <!-- step4 -->
+        <rect x="552" y="22" width="130" height="86" rx="10" fill="#c8963e"/>
+        <text x="617" y="56" text-anchor="middle" fill="white" font-size="22">✏️</text>
+        <text x="617" y="80" text-anchor="middle" fill="white" font-size="11" font-weight="700">演習スタート！</text>
+        <text x="617" y="95" text-anchor="middle" fill="white" font-size="11" font-weight="700">（即座に開始可）</text>
+        <!-- 下部注記 -->
+        <text x="350" y="120" text-anchor="middle" fill="#5a7080" font-size="10">学習データはブラウザに自動保存されます</text>
+      </svg>
+    </div>
+
+    <div class="sh3">起動手順</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-body">
+          <h4>該当URLをブラウザで開く</h4>
+          <p>共有されたURLをスマートフォンまたはPCのブラウザで開きます。Android ChromeまたはPC版のChromeが推奨です。iPhone・iPadでも動作しますが、予期せぬ動作が起こる可能性があります。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-body">
+          <h4>スマートフォンでの利用（おすすめ）</h4>
+          <p>スマートフォンのホーム画面に追加すると、外出先でもスムーズに学習できます。<br>※アプリ表示するには「共有」→「ホーム画面に追加」を選択してください。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-body">
+          <h4>初回のみ・問題データの取り込み</h4>
+          <p>初回起動時は「問題データを取り込んでください」と表示されます。「📂 questions.json を選ぶ」を押し、配布された <strong>questions.json</strong> を選択してください。「●●問を取り込みました」と表示されたら準備完了です。取り込んだデータは端末内に保存され、次回からはオフラインでも使えます。データを更新したいときは、設定画面の「問題データ → 📥 取り込み」から選び直します。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-body">
+          <h4>ホーム画面が表示される</h4>
+          <p>データがすぐに使える状態でホーム画面が開きます。さっそく演習を始められます。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="ico">⚠️</div>
+      <div class="body">
+        <h4>学習履歴の保存について</h4>
+        <p>学習履歴はブラウザ内に保存されます。ブラウザのキャッシュやデータを削除すると学習履歴も消えますので、定期的にバックアップを取ることをおすすめします（→11章）。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 2 ========== -->
+<div class="section" id="sec2">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">02</div>
+      <div class="section-header-text">
+        <h2>同梱されている問題データ</h2>
+        <p>過去問（第1回〜第34回）＋AI作成予想問題を収録</p>
+      </div>
+    </div>
+
+    <p class="prose">過去問（第1回〜第34回）と、過去問を分析して作成されたAI予想問題を同梱しています。アプリを起動すれば即座に使えます。</p>
+
+    <table class="tbl">
+      <thead><tr><th>カテゴリ</th><th>試験種別</th><th>収録範囲</th></tr></thead>
+      <tbody>
+        <tr><td>過去問</td><td>はり師きゅう師</td><td>第1回〜第34回</td></tr>
+        <tr><td>過去問</td><td>あん摩マッサージ指圧師</td><td>第1回〜第34回</td></tr>
+        <tr><td>AI作成問題</td><td>はり師きゅう師</td><td>全34回分析・直近10年分析・第35回予想</td></tr>
+        <tr><td>AI作成問題</td><td>あん摩マッサージ指圧師</td><td>全34回分析・直近10年分析・第35回予想</td></tr>
+      </tbody>
+    </table>
+
+    <!-- SVG: 科目構成図 -->
+    <div class="svg-wrap" style="margin-top:28px">
+      <svg width="720" height="250" viewBox="0 0 720 250" xmlns="http://www.w3.org/2000/svg">
+        <rect width="720" height="250" rx="14" fill="#f8fafb" stroke="#d0dce5"/>
+        <text x="360" y="26" text-anchor="middle" fill="#2c5f7c" font-size="13" font-weight="700">収録科目の構成</text>
+        <!-- AM -->
+        <rect x="16" y="38" width="328" height="28" rx="7" fill="#2c5f7c"/>
+        <text x="180" y="57" text-anchor="middle" fill="white" font-size="12" font-weight="700">AM（午前・基礎科目）</text>
+        <!-- AM科目 -->
+        <rect x="16" y="70" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="64" y="88" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">医療概論</text>
+        <rect x="118" y="70" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="166" y="88" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">衛生/公衆衛生</text>
+        <rect x="220" y="70" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="268" y="88" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">関係法規</text>
+        <rect x="16" y="108" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="64" y="126" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">解剖学</text>
+        <rect x="118" y="108" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="166" y="126" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">生理学</text>
+        <rect x="220" y="108" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="268" y="126" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">病理学概論</text>
+        <rect x="16" y="146" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="64" y="164" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">臨床医学総論</text>
+        <rect x="118" y="146" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="166" y="164" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">臨床医学各論</text>
+        <rect x="220" y="146" width="96" height="34" rx="5" fill="#eef4f8" stroke="#d0dce5"/>
+        <text x="268" y="164" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">リハビリ医学</text>
+        <rect x="16" y="184" width="300" height="34" rx="5" fill="#dce8f0" stroke="#2c5f7c"/>
+        <text x="166" y="205" text-anchor="middle" fill="#2c5f7c" font-size="10" font-weight="700">総合問題（基礎科目）　他：不適切問題</text>
+
+        <!-- PM -->
+        <rect x="376" y="38" width="328" height="28" rx="7" fill="#5e35b1"/>
+        <text x="540" y="57" text-anchor="middle" fill="white" font-size="12" font-weight="700">PM（午後・専門科目）</text>
+        <rect x="376" y="70" width="96" height="34" rx="5" fill="#f3eeff" stroke="#c5b0e8"/>
+        <text x="424" y="88" text-anchor="middle" fill="#5e35b1" font-size="10" font-weight="700">東洋医学概論</text>
+        <rect x="478" y="70" width="96" height="34" rx="5" fill="#f3eeff" stroke="#c5b0e8"/>
+        <text x="526" y="88" text-anchor="middle" fill="#5e35b1" font-size="10" font-weight="700">経絡経穴概論</text>
+        <rect x="580" y="70" width="96" height="34" rx="5" fill="#f3eeff" stroke="#c5b0e8"/>
+        <text x="628" y="88" text-anchor="middle" fill="#5e35b1" font-size="10" font-weight="700">東洋医学臨床論</text>
+        <rect x="376" y="108" width="96" height="44" rx="5" fill="#f3eeff" stroke="#c5b0e8"/>
+        <text x="424" y="126" text-anchor="middle" fill="#5e35b1" font-size="10" font-weight="700">はり理論</text>
+        <text x="424" y="140" text-anchor="middle" fill="#5e35b1" font-size="8">※はりきゅう専用</text>
+        <rect x="478" y="108" width="96" height="44" rx="5" fill="#f3eeff" stroke="#c5b0e8"/>
+        <text x="526" y="126" text-anchor="middle" fill="#5e35b1" font-size="10" font-weight="700">きゅう理論</text>
+        <text x="526" y="140" text-anchor="middle" fill="#5e35b1" font-size="8">※はりきゅう専用</text>
+        <rect x="580" y="108" width="96" height="44" rx="5" fill="#ffe8f0" stroke="#e8a0b8"/>
+        <text x="628" y="126" text-anchor="middle" fill="#a01060" font-size="10" font-weight="700">あマ指理論</text>
+        <text x="628" y="140" text-anchor="middle" fill="#a01060" font-size="8">※あマ指専用</text>
+        <rect x="376" y="196" width="300" height="34" rx="5" fill="#e8e0f4" stroke="#5e35b1"/>
+        <text x="526" y="217" text-anchor="middle" fill="#5e35b1" font-size="10" font-weight="700">総合問題（専門科目）</text>
+      </svg>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:20px">
+      <div class="ico">📝</div>
+      <div class="body">
+        <h4>複数正解の問題について</h4>
+        <p>一部の問題は正解が複数あります。いずれかの正解選択肢を選んだ場合正答となります。（科目は「不適切問題」として収録）</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 3 ========== -->
+<div class="section" id="sec3">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">03</div>
+      <div class="section-header-text">
+        <h2>ホーム画面の見方</h2>
+        <p>学習の進捗が一目でわかるメイン画面</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <!-- SVG: スマホホーム画面モック -->
+        <div class="phone-wrap">
+          <svg width="260" height="500" viewBox="0 0 260 500" xmlns="http://www.w3.org/2000/svg">
+            <rect width="260" height="500" rx="28" fill="#1e2a35"/>
+            <rect x="3" y="3" width="254" height="494" rx="26" fill="#f5f7fa"/>
+            <!-- ヘッダー -->
+            <rect x="3" y="3" width="254" height="48" rx="26" fill="#2c5f7c"/>
+            <rect x="3" y="26" width="254" height="25" fill="#2c5f7c"/>
+            <text x="130" y="22" text-anchor="middle" fill="white" font-size="10" font-weight="700">はりきゅう・あマ指　国試学習</text>
+            <!-- 統計3ボックス -->
+            <rect x="12" y="60" width="72" height="50" rx="8" fill="white" stroke="#d0dce5" stroke-width="0.5"/>
+            <text x="48" y="84" text-anchor="middle" fill="#2c5f7c" font-size="16" font-weight="700">5600</text>
+            <text x="48" y="100" text-anchor="middle" fill="#9aabb5" font-size="8">総問題数</text>
+            <rect x="94" y="60" width="72" height="50" rx="8" fill="white" stroke="#d0dce5" stroke-width="0.5"/>
+            <text x="130" y="84" text-anchor="middle" fill="#2c5f7c" font-size="16" font-weight="700">312</text>
+            <text x="130" y="100" text-anchor="middle" fill="#9aabb5" font-size="8">解答済み</text>
+            <rect x="176" y="60" width="72" height="50" rx="8" fill="white" stroke="#d0dce5" stroke-width="0.5"/>
+            <text x="212" y="84" text-anchor="middle" fill="#e09b2d" font-size="16" font-weight="700">8</text>
+            <text x="212" y="100" text-anchor="middle" fill="#9aabb5" font-size="8">復習対象</text>
+            <!-- ボタン群 -->
+            <rect x="12" y="122" width="236" height="40" rx="9" fill="white" stroke="#d0dce5"/>
+            <text x="36" y="145" fill="#1e2a35" font-size="16">📅</text>
+            <text x="60" y="139" fill="#1e2a35" font-size="11" font-weight="700">今日の演習</text>
+            <text x="60" y="154" fill="#9aabb5" font-size="9">全科目から分散・未出題優先</text>
+            <rect x="12" y="168" width="236" height="40" rx="9" fill="white" stroke="#d0dce5"/>
+            <text x="36" y="191" fill="#1e2a35" font-size="16">🔄</text>
+            <text x="60" y="185" fill="#1e2a35" font-size="11" font-weight="700">復習モード</text>
+            <text x="60" y="200" fill="#9aabb5" font-size="9">忘却曲線に基づき出題</text>
+            <rect x="12" y="214" width="236" height="40" rx="9" fill="white" stroke="#d0dce5"/>
+            <text x="36" y="237" fill="#1e2a35" font-size="16">📚</text>
+            <text x="60" y="231" fill="#1e2a35" font-size="11" font-weight="700">科目別演習</text>
+            <text x="60" y="246" fill="#9aabb5" font-size="9">科目を選んで集中学習</text>
+            <!-- 本試験ボタン（グラデ） -->
+            <defs>
+              <linearGradient id="btnGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" style="stop-color:#2c5f7c"/>
+                <stop offset="100%" style="stop-color:#5a8fa8"/>
+              </linearGradient>
+            </defs>
+            <rect x="12" y="260" width="236" height="40" rx="9" fill="url(#btnGrad)"/>
+            <text x="36" y="283" fill="white" font-size="16">📝</text>
+            <text x="60" y="277" fill="white" font-size="11" font-weight="700">本試験形式モード</text>
+            <text x="60" y="292" fill="rgba(255,255,255,.75)" font-size="9">本番同様 180問/160問</text>
+            <!-- 問題検索ボタン -->
+            <rect x="12" y="306" width="236" height="36" rx="9" fill="white" stroke="#d0dce5"/>
+            <text x="36" y="328" fill="#1e2a35" font-size="15">🔍</text>
+            <text x="60" y="324" fill="#1e2a35" font-size="11" font-weight="700">問題検索</text>
+            <text x="60" y="337" fill="#9aabb5" font-size="9">問題文・選択肢からキーワード検索</text>
+            <!-- サブボタン -->
+            <rect x="12" y="350" width="114" height="36" rx="9" fill="white" stroke="#d0dce5"/>
+            <text x="69" y="366" text-anchor="middle" fill="#1e2a35" font-size="10">📝 メモ一覧</text>
+            <text x="69" y="379" text-anchor="middle" fill="#9aabb5" font-size="8">メモした問題</text>
+            <rect x="134" y="350" width="114" height="36" rx="9" fill="white" stroke="#d0dce5"/>
+            <text x="191" y="366" text-anchor="middle" fill="#1e2a35" font-size="10">🚫 出題除外</text>
+            <text x="191" y="379" text-anchor="middle" fill="#9aabb5" font-size="8">除外設定した問題</text>
+            <!-- ボトムナビ -->
+            <rect x="3" y="454" width="254" height="43" rx="26" fill="white"/>
+            <line x1="3" y1="454" x2="257" y2="454" stroke="#d0dce5" stroke-width="0.5"/>
+            <rect x="3" y="454" width="254" height="22" fill="white"/>
+            <text x="65" y="472" text-anchor="middle" font-size="16">🏠</text>
+            <text x="65" y="487" text-anchor="middle" fill="#2c5f7c" font-size="9" font-weight="700">ホーム</text>
+            <text x="130" y="472" text-anchor="middle" font-size="16">📊</text>
+            <text x="130" y="487" text-anchor="middle" fill="#9aabb5" font-size="9">統計</text>
+            <text x="195" y="472" text-anchor="middle" font-size="16">⚙️</text>
+            <text x="195" y="487" text-anchor="middle" fill="#9aabb5" font-size="9">設定</text>
+          </svg>
+        </div>
+      </div>
+      <div>
+        <div class="sh3" style="margin-top:0">上部3ボックスの統計</div>
+        <ul style="list-style:none;margin-bottom:20px">
+          <li style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>総問題数</strong>　アプリに取り込まれている問題の合計数</li>
+          <li style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>解答済み</strong>　これまでに1回以上解答した問題数</li>
+          <li style="padding:8px 0;font-size:13px"><strong style="color:var(--amber)">復習対象（オレンジ）</strong>　今日の復習スケジュールが来た問題数</li>
+        </ul>
+
+        <div class="sh3">演習モードメニュー</div>
+        <ul style="list-style:none;margin-bottom:20px">
+          <li style="padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)">📅 <strong>今日の演習</strong> — 全科目から分散・未出題優先</li>
+          <li style="padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)">🔄 <strong>復習モード</strong> — 忘却曲線に基づき出題</li>
+          <li style="padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)">📚 <strong>科目別演習</strong> — 科目を選んで集中学習</li>
+          <li style="padding:6px 0;font-size:13px">📝 <strong>本試験形式モード</strong> — 180問/160問で実施</li>
+        </ul>
+
+        <div class="sh3">その他のメニュー</div>
+        <ul style="list-style:none;margin-bottom:20px">
+          <li style="padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)">🔍 <strong>問題検索</strong> — 問題文・選択肢からキーワード検索（→4章）</li>
+          <li style="padding:6px 0;font-size:13px;border-bottom:1px solid var(--border)">📝 <strong>メモ一覧</strong> — メモを書いた問題の一覧</li>
+          <li style="padding:6px 0;font-size:13px">🚫 <strong>出題除外一覧</strong> — 除外設定した問題の一覧（除外解除もここから行えます）</li>
+        </ul>
+
+        <div class="callout callout-info">
+          <div class="ico">🔍</div>
+          <div class="body">
+            <h4>試験種別フィルター</h4>
+            <p>設定で「はりきゅう」「あマ指」のどちらかに絞れます。フィルター中は統計数値もその種別のみが表示されます。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 4 ========== -->
+<div class="section" id="sec4">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">04</div>
+      <div class="section-header-text">
+        <h2>各演習モードの使い方</h2>
+        <p>目的に合わせて4種類のモードを使い分けましょう</p>
+      </div>
+    </div>
+
+    <div class="mode-grid">
+      <div class="mode-card c1">
+        <div class="mode-icon">📅</div>
+        <h3>今日の演習</h3>
+        <p>全科目から問題を均等に分散して出題。未出題を優先し、不足分は復習日が近い問題で補充します。日々のメイン学習に最適です。</p>
+        <span class="tag tag-blue">📖 メイン学習</span>
+      </div>
+      <div class="mode-card c2">
+        <div class="mode-icon">🔄</div>
+        <h3>復習モード</h3>
+        <p>忘却曲線に基づいて、今日復習すべき問題だけを自動的に出題します。毎日コツコツ取り組むことで効率よく記憶を定着させられます。</p>
+        <span class="tag tag-green">🔥 毎日おすすめ</span>
+      </div>
+      <div class="mode-card c3">
+        <div class="mode-icon">📚</div>
+        <h3>科目別演習</h3>
+        <p>AM（基礎）・PM（専門）・その他 に分けて科目一覧が表示されます。科目をタップするとその科目の問題が未出題優先で出題されます。</p>
+        <span class="tag tag-gold">🎯 科目集中</span>
+      </div>
+      <div class="mode-card c4">
+        <div class="mode-icon">📝</div>
+        <h3>本試験形式モード</h3>
+        <p>本番と同じ科目構成で180問（はりきゅう）または160問（あマ指）を出題。画面または紙で実施でき、合格判定・科目別正答率も表示されます。</p>
+        <span class="tag tag-purple">🏆 本番対策</span>
+      </div>
+    </div>
+
+    <div class="sh3">📅 今日の演習の操作方法</div>
+
+    <!-- SVG: 問題数選択UI -->
+    <div class="svg-wrap">
+      <svg width="560" height="100" viewBox="0 0 560 100" xmlns="http://www.w3.org/2000/svg">
+        <rect width="560" height="100" rx="12" fill="white" stroke="#d0dce5"/>
+        <text x="280" y="22" text-anchor="middle" fill="#2c5f7c" font-size="12" font-weight="700">出題する問題数を選択</text>
+        <rect x="16" y="34" width="76" height="34" rx="8" fill="#f5f7fa" stroke="#d0dce5"/>
+        <text x="54" y="56" text-anchor="middle" fill="#5a7080" font-size="13" font-weight="600">10問</text>
+        <rect x="100" y="34" width="76" height="34" rx="8" fill="#2c5f7c"/>
+        <text x="138" y="56" text-anchor="middle" fill="white" font-size="13" font-weight="700">20問</text>
+        <text x="138" y="80" text-anchor="middle" fill="#c8963e" font-size="9">デフォルト</text>
+        <rect x="184" y="34" width="76" height="34" rx="8" fill="#f5f7fa" stroke="#d0dce5"/>
+        <text x="222" y="56" text-anchor="middle" fill="#5a7080" font-size="13" font-weight="600">30問</text>
+        <rect x="268" y="34" width="76" height="34" rx="8" fill="#f5f7fa" stroke="#d0dce5"/>
+        <text x="306" y="56" text-anchor="middle" fill="#5a7080" font-size="13" font-weight="600">40問</text>
+        <rect x="352" y="34" width="76" height="34" rx="8" fill="#f5f7fa" stroke="#d0dce5"/>
+        <text x="390" y="56" text-anchor="middle" fill="#5a7080" font-size="13" font-weight="600">50問</text>
+        <rect x="446" y="34" width="98" height="34" rx="9" fill="#3d9970"/>
+        <text x="495" y="56" text-anchor="middle" fill="white" font-size="12" font-weight="700">演習を開始</text>
+      </svg>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-body">
+          <h4>出題する問題数を選ぶ</h4>
+          <p>10問・20問・30問・40問・50問から選択します（デフォルト：20問）。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-body">
+          <h4>「演習を開始」をタップ</h4>
+          <p>科目を個別に選ぶ操作はありません。全科目から自動的に分散して出題されます。</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-body">
+          <h4>順番に解答していく</h4>
+          <p>科目を横断しながら順番に出題されます。解答結果は自動的に学習履歴・忘却曲線に反映されます。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:8px">
+      <div class="ico">⚙️</div>
+      <div class="body">
+        <h4>出題ロジック（今日の演習）</h4>
+        <p>① 全科目について、未出題の問題をランダム順に並べたリストを作ります<br>
+           ② ラウンドロビン方式で各科目から1問ずつ取り出します<br>
+           ③ 設定した問題数に達するまで②を繰り返します（科目ごとに均等分散）</p>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="ico">📌</div>
+      <div class="body">
+        <h4>AI作成問題は対象外</h4>
+        <p>今日の演習・科目別演習では、AI作成問題は出題されません。AI作成問題は「本試験形式モード」専用です（→7章）。</p>
+      </div>
+    </div>
+
+    <div class="sh3">🔍 問題検索の使い方</div>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">
+      ホーム画面の「問題検索」から、収録されている全問題をキーワードで探せます。「橈骨神経について出た問題をまとめて確認したい」「あの語句が選択肢にあった問題を探したい」といったときに便利です。
+    </p>
+
+    <ul style="list-style:none;margin-bottom:18px">
+      <li style="padding:7px 0;font-size:13px;border-bottom:1px solid var(--border)"><strong style="color:var(--primary)">① 検索対象を選ぶ</strong>　「問題文から検索」または「選択肢から検索」を切り替えられます。</li>
+      <li style="padding:7px 0;font-size:13px;border-bottom:1px solid var(--border)"><strong style="color:var(--primary)">② キーワードを入力</strong>　検索ボックスに語句を入れて「検索」ボタン、またはEnterキーで実行します。</li>
+      <li style="padding:7px 0;font-size:13px;border-bottom:1px solid var(--border)"><strong style="color:var(--primary)">③ AND検索</strong>　スペース（全角・半角どちらでも可）で区切ると、すべての語句を含む問題だけが絞り込まれます。例：<strong style="color:var(--primary)">橈骨 神経</strong></li>
+      <li style="padding:7px 0;font-size:13px"><strong style="color:var(--primary)">④ 結果をタップ</strong>　ヒットした問題をタップすると内容を確認できます。検索語句は色付きでハイライト表示されます。</li>
+    </ul>
+
+    <div class="callout callout-tip">
+      <div class="ico">💡</div>
+      <div class="body">
+        <h4>検索のコツ</h4>
+        <p>全角・半角や大文字・小文字の違いは自動で吸収されるため、表記を気にせず入力できます。ヒットが50件以上になると結果は表示されません。その場合は語句を追加（AND検索）して絞り込んでください。なお、設定で除外した年度の問題、およびAI作成問題は検索対象から外れます（AI作成問題は本試験形式モード専用のため）。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 5 ========== -->
+<div class="section" id="sec5">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">05</div>
+      <div class="section-header-text">
+        <h2>問題演習画面の操作方法</h2>
+        <p>解答・メモ・スキップ・除外の方法</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="phone-wrap">
+          <svg width="260" height="460" viewBox="0 0 260 460" xmlns="http://www.w3.org/2000/svg">
+            <rect width="260" height="460" rx="24" fill="#1e2a35"/>
+            <rect x="3" y="3" width="254" height="454" rx="22" fill="#f5f7fa"/>
+            <!-- ヘッダー -->
+            <rect x="3" y="3" width="254" height="44" rx="22" fill="#2c5f7c"/>
+            <rect x="3" y="25" width="254" height="22" fill="#2c5f7c"/>
+            <text x="86" y="22" text-anchor="middle" fill="white" font-size="10" font-weight="700">📖 問題演習</text>
+            <text x="220" y="22" text-anchor="end" fill="rgba(255,255,255,.7)" font-size="9">12 / 20</text>
+            <!-- バッジ -->
+            <rect x="12" y="54" width="62" height="16" rx="4" fill="#8b5a3c"/>
+            <text x="43" y="66" text-anchor="middle" fill="#ffd54f" font-size="7" font-weight="700">はりきゅう</text>
+            <rect x="80" y="54" width="50" height="16" rx="4" fill="#2c5f7c"/>
+            <text x="105" y="66" text-anchor="middle" fill="white" font-size="7">第34回</text>
+            <rect x="136" y="54" width="46" height="16" rx="4" fill="#5a8fa8"/>
+            <text x="159" y="66" text-anchor="middle" fill="white" font-size="7">解剖学</text>
+            <text x="248" y="66" text-anchor="end" fill="#9aabb5" font-size="7">問15</text>
+            <!-- 問題文エリア -->
+            <rect x="12" y="78" width="236" height="48" rx="7" fill="white" stroke="#d0dce5"/>
+            <text x="130" y="100" text-anchor="middle" fill="#1e2a35" font-size="10">橈骨神経が通るのはどれか。</text>
+            <text x="130" y="116" text-anchor="middle" fill="#9aabb5" font-size="9">（問題文）</text>
+            <!-- 選択肢 -->
+            <rect x="12" y="134" width="236" height="32" rx="7" fill="#dce8f0" stroke="#2c5f7c" stroke-width="1.5"/>
+            <text x="26" y="152" fill="#2c5f7c" font-size="10" font-weight="700">1.</text>
+            <text x="40" y="152" fill="#1e2a35" font-size="10">筋裂孔</text>
+            <rect x="12" y="172" width="236" height="32" rx="7" fill="#f5f7fa" stroke="#d0dce5"/>
+            <text x="26" y="190" fill="#2c5f7c" font-size="10" font-weight="700">2.</text>
+            <text x="40" y="190" fill="#1e2a35" font-size="10">鎖骨下筋下隙</text>
+            <rect x="12" y="210" width="236" height="32" rx="7" fill="#f5f7fa" stroke="#d0dce5"/>
+            <text x="26" y="228" fill="#2c5f7c" font-size="10" font-weight="700">3.</text>
+            <text x="40" y="228" fill="#1e2a35" font-size="10">橈骨神経溝</text>
+            <rect x="12" y="248" width="236" height="32" rx="7" fill="#f5f7fa" stroke="#d0dce5"/>
+            <text x="26" y="266" fill="#2c5f7c" font-size="10" font-weight="700">4.</text>
+            <text x="40" y="266" fill="#1e2a35" font-size="10">腕橈骨筋と回外筋の間</text>
+            <!-- ボタン -->
+            <rect x="12" y="292" width="76" height="30" rx="7" fill="white" stroke="#2c5f7c"/>
+            <text x="50" y="311" text-anchor="middle" fill="#2c5f7c" font-size="9">分からない</text>
+            <rect x="96" y="292" width="152" height="30" rx="7" fill="#9aabb5"/>
+            <text x="172" y="311" text-anchor="middle" fill="white" font-size="9" font-weight="700">解答する</text>
+            <!-- メモ欄 -->
+            <rect x="12" y="334" width="236" height="52" rx="7" fill="#fffbf0" stroke="#ffc107"/>
+            <text x="24" y="350" fill="#8b6914" font-size="8" font-weight="700">✏️ メモ</text>
+            <text x="130" y="368" text-anchor="middle" fill="#ccc" font-size="9">自分用のメモを書く...</text>
+            <!-- 除外ボタン -->
+            <rect x="12" y="398" width="236" height="28" rx="7" fill="#fdf0ee" stroke="#e57373"/>
+            <text x="130" y="416" text-anchor="middle" fill="#c0392b" font-size="9">🚫 今後この問題を出題しない</text>
+          </svg>
+        </div>
+      </div>
+
+      <div>
+        <div class="sh3" style="margin-top:0">画面の見方</div>
+        <ul style="list-style:none">
+          <li style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>上部バッジ</strong>　試験種別・科目・出典（第◯◯回 問◯◯）</li>
+          <li style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>進捗</strong>　現在の出題番号（例: 問題 12/20）</li>
+          <li style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>選択肢1〜4</strong>　タップして回答を選択（設定でランダム化可）</li>
+          <li style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>解答するボタン</strong>　選択後にタップして採点</li>
+          <li style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>分からないボタン</strong>　スキップ（不正解の扱いになる）</li>
+          <li style="padding:7px 0;border-bottom:1px solid var(--border);font-size:13px"><strong>メモ欄</strong>　問題ごとに自由なメモを保存</li>
+          <li style="padding:7px 0;font-size:13px"><strong>🚫 今後出題しない</strong>　解答後に表示。法令など現在に即していない問題を今後除外します（ユーザー責任）。AI作成問題には表示されません。</li>
+        </ul>
+
+        <div class="sh3">解答後の表示</div>
+        <div style="background:#e8f5ee;border-left:4px solid #3d9970;padding:10px 14px;border-radius:8px;margin-bottom:10px;font-size:13px">
+          ✅ <strong>正解の場合</strong>　正解の選択肢が緑でハイライト・解説が表示
+        </div>
+        <div style="background:var(--red-lt);border-left:4px solid var(--red);padding:10px 14px;border-radius:8px;margin-bottom:16px;font-size:13px">
+          ❌ <strong>不正解の場合</strong>　選んだ答えが赤、正解が緑でハイライト
+        </div>
+        <p class="prose">「次の問題 →」ボタンで次へ進みます。忘却曲線レベルが自動更新されます。</p>
+
+        <div class="callout callout-tip">
+          <div class="ico">💡</div>
+          <div class="body">
+            <h4>メモの活用</h4>
+            <p>解説を読んで気づいたポイントをメモ欄に記録しておくと、次回復習時に確認できます。メモ一覧はホームからも参照できます。</p>
+          </div>
+        </div>
+        <div class="callout callout-warn">
+          <div class="ico">⚠️</div>
+          <div class="body">
+            <h4>解説の正確性について</h4>
+            <p>同梱の解説はAIによって作成されたものを含みます。学習の参考として活用し、不明点は教科書・授業ノート等で必ずご確認ください。</p>
+          </div>
+        </div>
+        <div class="callout callout-info">
+          <div class="ico">🤖</div>
+          <div class="body">
+            <h4>AI作成問題の扱い</h4>
+            <p>AI作成問題は本試験形式モード専用のため、「今後出題しない（出題除外）」の対象外です。出題除外一覧・メモ一覧・問題検索のいずれにも表示されません。</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 6 ========== -->
+<div class="section" id="sec6">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">06</div>
+      <div class="section-header-text">
+        <h2>本試験形式モード</h2>
+        <p>本番と同じ科目構成・問題数で実施。※不適切問題は出題されません</p>
+      </div>
+    </div>
+
+    <!-- SVG: セットアップ画面 -->
+    <div class="svg-wrap">
+      <svg width="700" height="190" viewBox="0 0 700 190" xmlns="http://www.w3.org/2000/svg">
+        <rect width="700" height="190" rx="14" fill="white" stroke="#d0dce5"/>
+        <!-- ① -->
+        <rect x="12" y="12" width="152" height="164" rx="10" fill="#eef4f8" stroke="#d0dce5"/>
+        <rect x="12" y="12" width="152" height="30" rx="10" fill="#2c5f7c"/>
+        <rect x="12" y="28" width="152" height="14" fill="#2c5f7c"/>
+        <text x="88" y="32" text-anchor="middle" fill="white" font-size="11" font-weight="700">① 試験種別</text>
+        <circle cx="28" cy="62" r="7" fill="white" stroke="#2c5f7c" stroke-width="1.5"/>
+        <circle cx="28" cy="62" r="4" fill="#2c5f7c"/>
+        <text x="40" y="66" fill="#1e2a35" font-size="10">はりきゅう(180問)</text>
+        <circle cx="28" cy="88" r="7" fill="white" stroke="#d0dce5" stroke-width="1.5"/>
+        <text x="40" y="92" fill="#9aabb5" font-size="10">あマ指(160問)</text>
+        <!-- ② -->
+        <rect x="172" y="12" width="190" height="164" rx="10" fill="#eef4f8" stroke="#d0dce5"/>
+        <rect x="172" y="12" width="190" height="30" rx="10" fill="#2c5f7c"/>
+        <rect x="172" y="28" width="190" height="14" fill="#2c5f7c"/>
+        <text x="267" y="32" text-anchor="middle" fill="white" font-size="11" font-weight="700">② 出題方法</text>
+        <circle cx="188" cy="62" r="7" fill="white" stroke="#d0dce5" stroke-width="1.5"/>
+        <text x="200" y="66" fill="#9aabb5" font-size="10">ランダム（全年度）</text>
+        <circle cx="188" cy="88" r="7" fill="white" stroke="#2c5f7c" stroke-width="1.5"/>
+        <circle cx="188" cy="88" r="4" fill="#2c5f7c"/>
+        <text x="200" y="92" fill="#1e2a35" font-size="10">年度を選んで出題</text>
+        <circle cx="188" cy="114" r="7" fill="white" stroke="#d0dce5" stroke-width="1.5"/>
+        <text x="200" y="118" fill="#9aabb5" font-size="10">AI作成問題セット</text>
+        <!-- ③ -->
+        <rect x="370" y="12" width="148" height="164" rx="10" fill="#eef4f8" stroke="#d0dce5"/>
+        <rect x="370" y="12" width="148" height="30" rx="10" fill="#2c5f7c"/>
+        <rect x="370" y="28" width="148" height="14" fill="#2c5f7c"/>
+        <text x="444" y="32" text-anchor="middle" fill="white" font-size="11" font-weight="700">③ 実施方法</text>
+        <circle cx="386" cy="62" r="7" fill="white" stroke="#2c5f7c" stroke-width="1.5"/>
+        <circle cx="386" cy="62" r="4" fill="#2c5f7c"/>
+        <text x="398" y="66" fill="#1e2a35" font-size="10">画面で実施</text>
+        <text x="398" y="78" fill="#5a8fa8" font-size="8">タイマー付き</text>
+        <circle cx="386" cy="96" r="7" fill="white" stroke="#d0dce5" stroke-width="1.5"/>
+        <text x="398" y="100" fill="#9aabb5" font-size="10">紙で実施(PDF)</text>
+        <text x="398" y="112" fill="#5a8fa8" font-size="8">印刷→後で採点</text>
+        <!-- ④ -->
+        <rect x="526" y="12" width="162" height="164" rx="10" fill="#eef4f8" stroke="#d0dce5"/>
+        <rect x="526" y="12" width="162" height="30" rx="10" fill="#2c5f7c"/>
+        <rect x="526" y="28" width="162" height="14" fill="#2c5f7c"/>
+        <text x="607" y="32" text-anchor="middle" fill="white" font-size="11" font-weight="700">④ オプション</text>
+        <rect x="588" y="52" width="28" height="16" rx="8" fill="#2c5f7c"/>
+        <circle cx="609" cy="60" r="6" fill="white"/>
+        <text x="542" y="64" fill="#1e2a35" font-size="9">履歴に反映</text>
+        <rect x="588" y="78" width="28" height="16" rx="8" fill="#cbd5dc"/>
+        <circle cx="592" cy="86" r="6" fill="white"/>
+        <text x="542" y="90" fill="#9aabb5" font-size="9">選択肢ランダム</text>
+        <rect x="588" y="104" width="28" height="16" rx="8" fill="#cbd5dc"/>
+        <circle cx="592" cy="112" r="6" fill="white"/>
+        <text x="542" y="116" fill="#9aabb5" font-size="9">除外問題も出題</text>
+        <!-- 開始ボタン -->
+        <rect x="200" y="158" width="300" height="22" rx="7" fill="#3d9970"/>
+        <text x="350" y="173" text-anchor="middle" fill="white" font-size="12" font-weight="700">本試験を開始</text>
+      </svg>
+    </div>
+
+    <div class="two-col" style="margin-top:24px">
+      <div>
+        <div class="sh3" style="margin-top:0">🖥️ 画面で実施</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n">1</div>
+            <div class="step-body">
+              <h4>AM（午前）から開始</h4>
+              <p>タイマーが自動的にカウントダウン開始（2時間10分）。残り時間が少なくなると警告色に変わります。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">2</div>
+            <div class="step-body">
+              <h4>「後で見直す」機能</h4>
+              <p>自信のない問題には🔖フラグを付けられます。問題一覧グリッドでフラグ付きの問題に素早くジャンプできます。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">3</div>
+            <div class="step-body">
+              <h4>PM → 結果画面＆復習</h4>
+              <p>得点・正答率・合格判定（60%ライン）・科目別正答率・所要時間が表示されます。所要時間の下ボタンから間違えた問題を復習することもできます。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sh3" style="margin-top:0">📄 紙で実施（PDF）</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n">1</div>
+            <div class="step-body">
+              <h4>PDF出力・印刷</h4>
+              <p>新しいタブでPDFプレビューが開きます。「🖨️ 印刷/PDF保存」で保存・印刷。各問題はページを跨がないよう配置されています。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">2</div>
+            <div class="step-body">
+              <h4>紙で解答する</h4>
+              <p>印刷した問題用紙に解答を記入します。PDF最終ページに正答一覧が付いています。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">3</div>
+            <div class="step-body">
+              <h4>ホーム画面で結果入力</h4>
+              <p>ホーム画面の「📝 紙試験 結果入力待ち」をタップ。各問題の○×をタップで入力します。問題用紙を紛失した場合は、結果入力画面の「🖨️ 問題用紙を再印刷」から同じ並び・同じ通し番号で再印刷できます。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">4</div>
+            <div class="step-body">
+              <h4>採点・履歴反映＆復習</h4>
+              <p>「採点して結果を見る」で自動採点。「学習履歴に反映」ONなら忘却曲線に計上されます。間違えた問題も復習できます。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout callout-info">
+      <div class="ico">🎯</div>
+      <div class="body">
+        <h4>出題方法の3つの違い</h4>
+        <p><strong>年度を選んで出題</strong>：選んだ回（年度）の問題だけを科目別に出題します。<strong>全範囲からランダム出題</strong>：実際の過去問（全年度）からランダムに出題します（AI作成問題は含まれません）。<strong>AI作成問題出題</strong>：AI作成の予想問題だけを出題します。AI作成問題が出るのはこのモードのときだけです。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 7 ========== -->
+<div class="section" id="sec7">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">07</div>
+      <div class="section-header-text">
+        <h2>AI作成問題の活用方法</h2>
+        <p>本試験形式モードで実施できる予想問題セット</p>
+      </div>
+    </div>
+
+    <div class="callout callout-purple">
+      <div class="ico">🤖</div>
+      <div class="body">
+        <h4>AI作成問題とは</h4>
+        <p>国家試験を分析し、出題傾向や頻出テーマに基づいてAIが新たに作成した予想問題です。本番にはない問題で実力を試すことができ、過去問だけでは見つからない弱点の発見に役立ちます。次回予想問題は、2026年版出題基準に沿って作成されています。</p>
+      </div>
+    </div>
+
+    <div class="sh3">📦 同梱されているAI作成問題セット</div>
+    <table class="tbl">
+      <thead><tr><th>セット名</th><th>試験種別</th><th>分析範囲</th><th class="r">問題数</th></tr></thead>
+      <tbody>
+        <tr><td>はりきゅう 全34回分析</td><td>はり師きゅう師</td><td>第1回〜第34回</td><td class="r">180問</td></tr>
+        <tr><td>はりきゅう 直近10年分析</td><td>はり師きゅう師</td><td>第25回〜第34回</td><td class="r">180問</td></tr>
+        <tr><td>はりきゅう 第35回予想</td><td>はり師きゅう師</td><td>次回試験予想</td><td class="r">180問</td></tr>
+        <tr><td>あマ指 全34回分析</td><td>あん摩マッサージ指圧師</td><td>第1回〜第34回</td><td class="r">160問</td></tr>
+        <tr><td>あマ指 直近10年分析</td><td>あん摩マッサージ指圧師</td><td>第25回〜第34回</td><td class="r">160問</td></tr>
+        <tr><td>あマ指 第35回予想</td><td>あん摩マッサージ指圧師</td><td>次回試験予想</td><td class="r">160問</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warn" style="margin-top:16px">
+      <div class="ico">⚠️</div>
+      <div class="body">
+        <h4>AI作成問題は補助教材として</h4>
+        <p>AI作成問題は出題傾向の分析に基づきますが、本試験の問題そのものではありません。過去問演習をベースに、実力チェックや弱点発見の補助としてご活用ください。</p>
+      </div>
+    </div>
+    <div class="callout callout-red">
+      <div class="ico">🚫</div>
+      <div class="body">
+        <h4>学習履歴には反映されません</h4>
+        <p>AI作成問題の解答結果は、「学習履歴に反映」チェックの有無に関わらず、忘却曲線・学習履歴に反映されません。本番形式の力試し専用としてお使いください。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 8 ========== -->
+<div class="section" id="sec8">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">08</div>
+      <div class="section-header-text">
+        <h2>統計画面の見方</h2>
+        <p>下部ナビゲーションの「📊 統計」からアクセス</p>
+      </div>
+    </div>
+
+    <!-- SVG: 統計画面モック -->
+    <div class="svg-wrap">
+      <svg width="700" height="300" viewBox="0 0 700 300" xmlns="http://www.w3.org/2000/svg">
+        <rect width="700" height="300" rx="14" fill="#f5f7fa" stroke="#d0dce5"/>
+        <text x="350" y="28" text-anchor="middle" fill="#2c5f7c" font-size="13" font-weight="700">統計画面</text>
+        <!-- 全体サマリー6ボックス -->
+        <rect x="16" y="40" width="100" height="56" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="66" y="66" text-anchor="middle" fill="#2c5f7c" font-size="18" font-weight="700">5600</text>
+        <text x="66" y="84" text-anchor="middle" fill="#9aabb5" font-size="9">取り込み済み</text>
+        <rect x="124" y="40" width="100" height="56" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="174" y="66" text-anchor="middle" fill="#2c5f7c" font-size="18" font-weight="700">312</text>
+        <text x="174" y="84" text-anchor="middle" fill="#9aabb5" font-size="9">解答経験</text>
+        <rect x="232" y="40" width="100" height="56" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="282" y="66" text-anchor="middle" fill="#3d9970" font-size="18" font-weight="700">76%</text>
+        <text x="282" y="84" text-anchor="middle" fill="#9aabb5" font-size="9">正答率</text>
+        <rect x="340" y="40" width="100" height="56" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="390" y="66" text-anchor="middle" fill="#5a8fa8" font-size="18" font-weight="700">140</text>
+        <text x="390" y="84" text-anchor="middle" fill="#9aabb5" font-size="9">習得済み(Lv4+)</text>
+        <rect x="448" y="40" width="100" height="56" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="498" y="66" text-anchor="middle" fill="#e09b2d" font-size="18" font-weight="700">8</text>
+        <text x="498" y="84" text-anchor="middle" fill="#9aabb5" font-size="9">今日の復習</text>
+        <rect x="556" y="40" width="128" height="56" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="620" y="66" text-anchor="middle" fill="#9aabb5" font-size="18" font-weight="700">5288</text>
+        <text x="620" y="84" text-anchor="middle" fill="#9aabb5" font-size="9">未挑戦</text>
+        <!-- 直近7日グラフ -->
+        <rect x="16" y="110" width="330" height="110" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="28" y="130" fill="#2c5f7c" font-size="11" font-weight="700">📅 直近7日の学習</text>
+        <rect x="28"  y="164" width="34" height="32" rx="3" fill="#5a8fa8"/>
+        <rect x="70"  y="148" width="34" height="48" rx="3" fill="#5a8fa8"/>
+        <rect x="112" y="156" width="34" height="40" rx="3" fill="#5a8fa8"/>
+        <rect x="154" y="140" width="34" height="56" rx="3" fill="#5a8fa8"/>
+        <rect x="196" y="152" width="34" height="44" rx="3" fill="#5a8fa8"/>
+        <rect x="238" y="146" width="34" height="50" rx="3" fill="#5a8fa8"/>
+        <rect x="280" y="154" width="34" height="42" rx="3" fill="#2c5f7c"/>
+        <line x1="28" y1="200" x2="322" y2="200" stroke="#eef4f8" stroke-width="1"/>
+        <text x="45"  y="212" text-anchor="middle" fill="#9aabb5" font-size="8">月</text>
+        <text x="87"  y="212" text-anchor="middle" fill="#9aabb5" font-size="8">火</text>
+        <text x="129" y="212" text-anchor="middle" fill="#9aabb5" font-size="8">水</text>
+        <text x="171" y="212" text-anchor="middle" fill="#9aabb5" font-size="8">木</text>
+        <text x="213" y="212" text-anchor="middle" fill="#9aabb5" font-size="8">金</text>
+        <text x="255" y="212" text-anchor="middle" fill="#9aabb5" font-size="8">土</text>
+        <text x="297" y="212" text-anchor="middle" fill="#2c5f7c" font-size="8" font-weight="700">今日</text>
+        <!-- 科目別バー -->
+        <rect x="356" y="110" width="328" height="160" rx="8" fill="white" stroke="#d0dce5"/>
+        <text x="368" y="130" fill="#2c5f7c" font-size="11" font-weight="700">📚 科目別 学習進度</text>
+        <!-- 凡例 -->
+        <rect x="368" y="138" width="8" height="8" rx="2" fill="#e53935"/><text x="380" y="146" fill="#9aabb5" font-size="8">Lv1</text>
+        <rect x="400" y="138" width="8" height="8" rx="2" fill="#f9a825"/><text x="412" y="146" fill="#9aabb5" font-size="8">Lv2</text>
+        <rect x="432" y="138" width="8" height="8" rx="2" fill="#7cb342"/><text x="444" y="146" fill="#9aabb5" font-size="8">Lv3</text>
+        <rect x="464" y="138" width="8" height="8" rx="2" fill="#43a047"/><text x="476" y="146" fill="#9aabb5" font-size="8">Lv4</text>
+        <rect x="496" y="138" width="8" height="8" rx="2" fill="#1e88e5"/><text x="508" y="146" fill="#9aabb5" font-size="8">Lv5</text>
+        <!-- バー行 -->
+        <text x="368" y="168" fill="#1e2a35" font-size="10">解剖学</text>
+        <rect x="420" y="158" width="240" height="12" rx="6" fill="#e0e0e0"/>
+        <rect x="420" y="158" width="30" height="12" rx="0" fill="#e53935"/>
+        <rect x="450" y="158" width="24" height="12" rx="0" fill="#f9a825"/>
+        <rect x="474" y="158" width="48" height="12" rx="0" fill="#7cb342"/>
+        <rect x="522" y="158" width="42" height="12" rx="0" fill="#43a047"/>
+        <rect x="564" y="158" width="24" height="12" rx="0" fill="#1e88e5"/>
+        <rect x="420" y="158" width="168" height="12" rx="6" fill="none" stroke="#d0dce5"/>
+        <text x="370" y="196" fill="#1e2a35" font-size="10">東洋概論</text>
+        <rect x="420" y="186" width="240" height="12" rx="6" fill="#e0e0e0"/>
+        <rect x="420" y="186" width="16" height="12" rx="0" fill="#e53935"/>
+        <rect x="436" y="186" width="36" height="12" rx="0" fill="#7cb342"/>
+        <rect x="472" y="186" width="68" height="12" rx="0" fill="#43a047"/>
+        <rect x="540" y="186" width="58" height="12" rx="0" fill="#1e88e5"/>
+        <rect x="420" y="186" width="178" height="12" rx="6" fill="none" stroke="#d0dce5"/>
+        <text x="368" y="224" fill="#1e2a35" font-size="10">経絡経穴</text>
+        <rect x="420" y="214" width="240" height="12" rx="6" fill="#e0e0e0"/>
+        <rect x="420" y="214" width="54" height="12" rx="0" fill="#e53935"/>
+        <rect x="474" y="214" width="28" height="12" rx="0" fill="#f9a825"/>
+        <rect x="502" y="214" width="32" height="12" rx="0" fill="#7cb342"/>
+        <rect x="534" y="214" width="20" height="12" rx="0" fill="#43a047"/>
+        <rect x="420" y="214" width="134" height="12" rx="6" fill="none" stroke="#d0dce5"/>
+        <text x="368" y="252" fill="#1e2a35" font-size="10">はり理論</text>
+        <rect x="420" y="242" width="240" height="12" rx="6" fill="#e0e0e0"/>
+        <rect x="420" y="242" width="10" height="12" rx="0" fill="#e53935"/>
+        <rect x="430" y="242" width="48" height="12" rx="0" fill="#7cb342"/>
+        <rect x="478" y="242" width="80" height="12" rx="0" fill="#43a047"/>
+        <rect x="558" y="242" width="62" height="12" rx="0" fill="#1e88e5"/>
+        <rect x="420" y="242" width="200" height="12" rx="6" fill="none" stroke="#d0dce5"/>
+        <!-- Lv0グレーラベル -->
+        <text x="660" y="170" fill="#9aabb5" font-size="8">未/Lv0</text>
+        <text x="660" y="198" fill="#9aabb5" font-size="8">未/Lv0</text>
+        <text x="660" y="226" fill="#9aabb5" font-size="8">未/Lv0</text>
+        <text x="660" y="254" fill="#9aabb5" font-size="8">未/Lv0</text>
+        <!-- 下部注記 -->
+        <text x="350" y="286" text-anchor="middle" fill="#9aabb5" font-size="10">バーが右（緑・青）に偏るほど習得が進んでいます</text>
+      </svg>
+    </div>
+
+    <div class="sh3">見方のポイント</div>
+    <table class="tbl">
+      <thead><tr><th>指標</th><th>説明</th></tr></thead>
+      <tbody>
+        <tr><td>取り込み済み</td><td>アプリに取り込まれた問題の総数</td></tr>
+        <tr><td>解答経験</td><td>1回以上解答したことがある問題数</td></tr>
+        <tr><td>正答率</td><td>解答経験のある問題の正答割合</td></tr>
+        <tr><td>習得済み（Lv4以上）</td><td>忘却曲線Lv4以上の問題数（定着の目安）</td></tr>
+        <tr><td>今日の復習</td><td>本日復習スケジュールが来ている問題数</td></tr>
+        <tr><td>未挑戦</td><td>まだ一度も解答していない問題数</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========== SEC 9 ========== -->
+<div class="section" id="sec9">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">09</div>
+      <div class="section-header-text">
+        <h2>設定画面</h2>
+        <p>下部ナビゲーションの「⚙️ 設定」からアクセス</p>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div>
+        <div class="setting-card">
+          <div class="setting-head">🎯 出題設定</div>
+          <div class="setting-row">
+            <div><div class="setting-lbl">選択肢をランダムに並べる</div><div class="setting-desc">演習モード全般に適用</div></div>
+            <div class="toggle"></div>
+          </div>
+          <div class="setting-row">
+            <div><div class="setting-lbl">試験種別フィルター</div><div class="setting-desc">はりきゅう / あマ指 / 両方</div></div>
+            <span class="badge-link">はりきゅう ›</span>
+          </div>
+          <div class="setting-row">
+            <div><div class="setting-lbl">出題しない年度</div><div class="setting-desc">チェックした年度を通常演習から除外</div></div>
+            <span class="badge-link">設定する ›</span>
+          </div>
+        </div>
+
+        <div class="setting-card" style="margin-top:16px">
+          <div class="setting-head">ℹ️ アプリ情報</div>
+          <div style="padding:14px 18px;font-size:13px;line-height:2;color:var(--muted)">
+            <div>はり師きゅう師・あマ指の国家試験対策学習アプリ</div>
+            <div>バージョン情報・制作者情報は統合ホーム画面に表示されます。</div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="setting-card">
+          <div class="setting-head">💾 学習履歴の管理</div>
+          <div class="setting-row" style="cursor:pointer">
+            <div class="setting-lbl" style="color:var(--red)">🗑️ 学習履歴をリセット（削除）</div>
+            <span class="badge-link" style="color:var(--red)">›</span>
+          </div>
+        </div>
+
+        <div class="callout callout-info">
+          <div class="ico">💾</div>
+          <div class="body">
+            <h4>バックアップは統合ホームから</h4>
+            <p>学習履歴の書き出し・復元は、各アプリではなく統合ホーム画面下部の「学習データのバックアップ」からまとめて行います（→11章）。全アプリのデータを1つのファイルにまとめて保存・復元でき、機種変更時の引き継ぎもこれだけで済みます。</p>
+          </div>
+        </div>
+
+        <div class="callout callout-warn">
+          <div class="ico">⚠️</div>
+          <div class="body">
+            <h4>機種変更・引き継ぎの手順</h4>
+            <p>① 旧端末で統合ホームの「全データをバックアップ」→ JSONファイルを保存<br>
+               ② 新端末でアプリURLを開く<br>
+               ③ 新端末で統合ホームの「バックアップから復元」でJSONを読み込む</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 10 ========== -->
+<div class="section" id="sec10">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">10</div>
+      <div class="section-header-text">
+        <h2>忘却曲線（復習スケジュール）の仕組み</h2>
+        <p>エビングハウスの忘却曲線に基づく効率的な記憶定着</p>
+      </div>
+    </div>
+
+    <!-- SVG: レベルフロー図 -->
+    <div class="svg-wrap">
+      <svg width="700" height="120" viewBox="0 0 700 120" xmlns="http://www.w3.org/2000/svg">
+        <rect width="700" height="120" rx="14" fill="white" stroke="#d0dce5"/>
+        <rect x="12" y="16" width="96" height="88" rx="9" fill="#f5f5f5" stroke="#e0e0e0"/>
+        <text x="60" y="44" text-anchor="middle" fill="#666" font-size="11" font-weight="700">Lv 0</text>
+        <text x="60" y="60" text-anchor="middle" fill="#999" font-size="9">未学習</text>
+        <text x="60" y="74" text-anchor="middle" fill="#999" font-size="9">または</text>
+        <text x="60" y="88" text-anchor="middle" fill="#999" font-size="9">不正解でリセット</text>
+        <polygon points="114,52 128,60 114,68" fill="#3d9970"/>
+        <text x="121" y="82" text-anchor="middle" fill="#3d9970" font-size="8">正解</text>
+        <rect x="132" y="16" width="96" height="88" rx="9" fill="#ffebee" stroke="#e53935"/>
+        <text x="180" y="44" text-anchor="middle" fill="#e53935" font-size="11" font-weight="700">Lv 1</text>
+        <text x="180" y="60" text-anchor="middle" fill="#555" font-size="9">1回目正解</text>
+        <text x="180" y="76" text-anchor="middle" fill="#e53935" font-size="11" font-weight="700">2日後</text>
+        <polygon points="234,52 248,60 234,68" fill="#3d9970"/>
+        <text x="241" y="82" text-anchor="middle" fill="#3d9970" font-size="8">正解</text>
+        <rect x="252" y="16" width="96" height="88" rx="9" fill="#fff8e1" stroke="#f9a825"/>
+        <text x="300" y="44" text-anchor="middle" fill="#f9a825" font-size="11" font-weight="700">Lv 2</text>
+        <text x="300" y="60" text-anchor="middle" fill="#555" font-size="9">2回目正解</text>
+        <text x="300" y="76" text-anchor="middle" fill="#f9a825" font-size="11" font-weight="700">3日後</text>
+        <polygon points="354,52 368,60 354,68" fill="#3d9970"/>
+        <text x="361" y="82" text-anchor="middle" fill="#3d9970" font-size="8">正解</text>
+        <rect x="372" y="16" width="96" height="88" rx="9" fill="#f1f8e9" stroke="#7cb342"/>
+        <text x="420" y="44" text-anchor="middle" fill="#7cb342" font-size="11" font-weight="700">Lv 3</text>
+        <text x="420" y="60" text-anchor="middle" fill="#555" font-size="9">3回目正解</text>
+        <text x="420" y="76" text-anchor="middle" fill="#7cb342" font-size="11" font-weight="700">7日後</text>
+        <polygon points="474,52 488,60 474,68" fill="#3d9970"/>
+        <text x="481" y="82" text-anchor="middle" fill="#3d9970" font-size="8">正解</text>
+        <rect x="492" y="16" width="96" height="88" rx="9" fill="#e8f5e9" stroke="#43a047"/>
+        <text x="540" y="44" text-anchor="middle" fill="#43a047" font-size="11" font-weight="700">Lv 4</text>
+        <text x="540" y="56" text-anchor="middle" fill="#555" font-size="9">習得済み🎉</text>
+        <text x="540" y="72" text-anchor="middle" fill="#43a047" font-size="11" font-weight="700">14日後</text>
+        <polygon points="594,52 608,60 594,68" fill="#3d9970"/>
+        <text x="601" y="82" text-anchor="middle" fill="#3d9970" font-size="8">正解</text>
+        <rect x="612" y="16" width="76" height="88" rx="9" fill="#e3f2fd" stroke="#1e88e5"/>
+        <text x="650" y="44" text-anchor="middle" fill="#1e88e5" font-size="11" font-weight="700">Lv 5</text>
+        <text x="650" y="60" text-anchor="middle" fill="#555" font-size="9">最高！</text>
+        <text x="650" y="76" text-anchor="middle" fill="#1e88e5" font-size="11" font-weight="700">30日後</text>
+      </svg>
+    </div>
+
+    <table class="tbl" style="margin-top:20px">
+      <thead><tr><th>レベル</th><th>状態</th><th>次の復習まで</th><th>色</th></tr></thead>
+      <tbody>
+        <tr><td><span class="lv lv0">Lv 0</span></td><td>未学習 / 不正解・スキップでリセット</td><td>—（未学習）/ 当日中（不正解時）</td><td>グレー</td></tr>
+        <tr><td><span class="lv lv1">Lv 1</span></td><td>1回目正解</td><td>2日後に復習</td><td>赤</td></tr>
+        <tr><td><span class="lv lv2">Lv 2</span></td><td>2回目正解</td><td>3日後に復習</td><td>黄</td></tr>
+        <tr><td><span class="lv lv3">Lv 3</span></td><td>3回目正解</td><td>7日後に復習</td><td>黄緑</td></tr>
+        <tr><td><span class="lv lv4">Lv 4</span></td><td>4回目正解（習得済み）</td><td>14日後に復習</td><td>緑</td></tr>
+        <tr><td><span class="lv lv5">Lv 5</span></td><td>5回目以上正解（最高レベル）</td><td>30日後に復習</td><td>青</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout callout-warn" style="margin-top:16px">
+      <div class="ico">🔄</div>
+      <div class="body">
+        <h4>不正解・スキップ時のリセット</h4>
+        <p>不正解またはスキップ（分からない）にした場合は、レベルがLv0に戻り、当日中に復習対象として再出題されます。</p>
+      </div>
+    </div>
+
+    <div class="callout callout-tip">
+      <div class="ico">💡</div>
+      <div class="body">
+        <h4>効果的な学習の進め方</h4>
+        <p>① 毎日：「復習モード」で当日の復習問題をこなす（5〜15分）<br>
+           ② メイン：「今日の演習」で20〜30問を全科目から分散学習<br>
+           ③ 週1回：統計画面で進捗確認、弱い科目を「科目別演習」で強化<br>
+           ④ 月1回：「本試験形式モード（過去問）」で本番形式に慣れる<br>
+           ⑤ 試験直前：「本試験形式モード（AI作成問題）」で総仕上げ</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== SEC 11 ========== -->
+<div class="section" id="sec11">
+  <div class="wrap">
+    <div class="section-header">
+      <div class="sec-num">11</div>
+      <div class="section-header-text">
+        <h2>学習データのバックアップ・引継ぎ</h2>
+        <p>月1回程度の定期バックアップを推奨します</p>
+      </div>
+    </div>
+
+    <div class="callout callout-warn">
+      <div class="ico">⚠️</div>
+      <div class="body">
+        <h4>重要：定期的にバックアップを取ってください</h4>
+        <p>学習履歴はブラウザ内部に保存されています。ブラウザのデータ消去・アプリの削除・OSアップデートなどで消える場合があります。月1回程度のバックアップをおすすめします。</p>
+      </div>
+    </div>
+
+    <div class="callout callout-info" style="margin-top:24px">
+      <div class="ico">💾</div>
+      <div class="body">
+        <h4>バックアップは統合ホームから一括で</h4>
+        <p>学習履歴のバックアップ（書き出し）と復元（取り込み）は、各アプリではなく統合ホーム画面でまとめて行います。国試学習・〇×問題集の学習履歴、弁証支援の編集内容やカルテ、筋トレ記録などを、1つのファイルにまとめて保存・復元できます。</p>
+      </div>
+    </div>
+
+    <div class="two-col" style="margin-top:24px">
+      <div>
+        <div class="sh3" style="margin-top:0">📤 バックアップ（書き出し）</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n">1</div>
+            <div class="step-body">
+              <h4>統合ホーム画面を開く</h4>
+              <p>各アプリ左上の「‹ ホーム」から、アプリ一覧のホーム画面に戻ります。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">2</div>
+            <div class="step-body">
+              <h4>「全データをバックアップ」をタップ</h4>
+              <p>画面下部の「学習データのバックアップ」にあるボタンを押すと、全アプリのデータをまとめたJSONファイルがダウンロードされます。Googleドライブ・iCloud・PCなど安全な場所に保存してください。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="sh3" style="margin-top:0">📥 復元（取り込み）</div>
+        <div class="steps">
+          <div class="step">
+            <div class="step-n">1</div>
+            <div class="step-body">
+              <h4>新しい端末で統合ホームを開く</h4>
+              <p>アプリURLを新端末で開き、ホーム画面を表示します。</p>
+            </div>
+          </div>
+          <div class="step">
+            <div class="step-n">2</div>
+            <div class="step-body">
+              <h4>「バックアップから復元」をタップ</h4>
+              <p>保存しておいたJSONファイルを選ぶと、全アプリのデータが復元されます。レベル・復習スケジュール・カルテなどがまとめて引き継がれます。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sh3">❓ よくある質問</div>
+    <div style="background:white;border:1px solid var(--border);border-radius:12px;padding:20px;font-size:13px;line-height:2">
+      <p style="margin-bottom:12px"><strong>Q. 新しいバージョンのアプリ・問題への更新方法は？</strong><br>
+      <span style="color:var(--muted)">A. アプリ本体は、統合ホーム下部の「🔄 更新確認」ボタンを押したときに最新かどうかを確認し、更新があれば最新版に切り替わります（押したときだけ通信します）。問題データを新しくしたいときは、設定画面の「問題データ → 📥 取り込み」から新しい questions.json を選び直してください。学習履歴・メモ・結果入力待ちのデータは更新後も保持されます。</span></p>
+      <p style="margin-bottom:12px"><strong>Q. オフラインでも使えますか？</strong><br>
+      <span style="color:var(--muted)">A. 使えます。問題データを一度取り込めば、以降は通信のない場所でも起動・学習できます。学習履歴なども端末内に保持されます。</span></p>
+      <p><strong>Q. AI作成問題は復習に出てこないのはなぜ？</strong><br>
+      <span style="color:var(--muted)">A. AI作成問題は本試験形式モード専用です。何度でも力試しに使えるよう、忘却曲線の対象外としています。</span></p>
+    </div>
+  </div>
+</div>
+
+<!-- ========== フッター ========== -->
+<footer>
+  <p style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:8px">国試学習アプリ 使用説明書 ver.2026.6.1</p>
+  <p>はり師きゅう師・あん摩マッサージ指圧師 国家試験対策</p>
+  <p style="margin-top:16px;font-size:11px;color:#9aabb5;max-width:680px;margin-left:auto;margin-right:auto;line-height:1.9">
+    本アプリはAIを用いて制作しましたが、制作者が創作的な意図を持って詳細な指示を与え、生成後に加筆・編集を行っていますので著作権があります。また、解説の一部にはインターネット上の文言を用いており、これらは元の著作権者に権利があります。本アプリは個人学習ならびに著作権を侵害しない使用方法を想定しており、金銭の発生する利用、再配布は禁止されます。
+  </p>
+  <p style="margin-top:16px;font-size:12px;font-weight:700;color:var(--muted)">本アプリ作成にあたり参考にさせていただいた情報（順不同）</p>
+  <ul class="link-list" style="max-width:480px;margin:8px auto 0">
+    <li><a href="https://www.ue-labo.jp/" target="_blank">https://www.ue-labo.jp/</a>　ウエマツ総研</li>
+    <li><a href="https://anma-massage.jp/test/" target="_blank">https://anma-massage.jp/test/</a>　カースケの国家試験対策コンテンツ</li>
+    <li><a href="https://note.com/acupuncture33mmm" target="_blank">https://note.com/acupuncture33mmm</a>　いつでもどこでも誰でも学べる場所</li>
+    <li><a href="https://novacell.tv/exam/shinkyu/" target="_blank">https://novacell.tv/exam/shinkyu/</a>　ノバセル</li>
+    <li><a href="https://hari-study.com/" target="_blank">https://hari-study.com/</a>　ハリスタ</li>
+    <li><a href="https://kurohon.jp/gakusei/" target="_blank">https://kurohon.jp/gakusei/</a>　国試黒本</li>
+    <li><a href="https://makomo.net/" target="_blank">https://makomo.net/</a>　国試オタク</li>
+  </ul>
+</footer>
+
+</body>
+</html>

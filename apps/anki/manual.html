@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>暗記アプリ 使用説明書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Noto+Serif+JP:wght@400;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:   #1e3a4f;
+  --primary:#2c5f7c;
+  --mid:    #5a8fa8;
+  --light:  #eef4f8;
+  --gold:   #c8963e;
+  --gold-lt:#fdf3e2;
+  --green:  #3d9970;
+  --green-lt:#e8f5ee;
+  --amber:  #e09b2d;
+  --amber-lt:#fff8e1;
+  --red:    #c0392b;
+  --red-lt: #fdf0ee;
+  --purple: #5e35b1;
+  --purple-lt:#ede7f6;
+  --text:   #1a2a35;
+  --muted:  #5a7080;
+  --border: #d0dce5;
+  --bg:     #f5f8fa;
+  --white:  #ffffff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Noto Sans JP',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.85;
+  font-size:14px;
+}
+
+/* ========== COVER ========== */
+.cover{
+  min-height:100vh;
+  background:linear-gradient(160deg,#0f2333 0%,#1e3a4f 40%,#2c5f7c 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:80px 40px;position:relative;overflow:hidden;
+}
+.cover::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%,rgba(90,143,168,.12) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(200,150,62,.08) 0%,transparent 60%);
+}
+/* 格子模様 */
+.cover::after{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.cover-inner{position:relative;z-index:1;max-width:640px}
+.cover-eyebrow{
+  display:inline-block;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:20px;padding:5px 20px;
+  font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.7);
+  margin-bottom:32px;font-family:'DM Mono',monospace;
+}
+.cover h1{
+  font-family:'Noto Serif JP',serif;
+  font-size:44px;font-weight:700;line-height:1.25;
+  color:#fff;margin-bottom:16px;letter-spacing:1px;
+}
+.cover h1 em{color:#7ec8e3;font-style:normal}
+.cover-sub{font-size:15px;color:rgba(255,255,255,.65);margin-bottom:10px}
+.cover-ver{
+  display:block;text-align:center;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  border-radius:6px;padding:4px 16px;font-size:12px;
+  font-family:'DM Mono',monospace;color:rgba(255,255,255,.8);
+  margin:0 auto 48px;letter-spacing:1px;width:fit-content;
+}
+.cover-chips{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:48px;max-width:440px;margin-left:auto;margin-right:auto;
+}
+.chip{
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;padding:10px 18px;font-size:12px;color:rgba(255,255,255,.85);
+}
+.chip strong{display:block;font-size:14px;margin-bottom:2px;color:#fff}
+.cover-credits{
+  font-size:12px;color:rgba(255,255,255,.45);line-height:2;
+  border-top:1px solid rgba(255,255,255,.1);padding-top:20px;margin-top:0;
+}
+
+/* ========== 大外ラッパー ========== */
+.wrap{max-width:900px;margin:0 auto;padding:0 32px}
+
+/* ========== 目次 ========== */
+.toc-section{background:var(--navy);color:#fff;padding:60px 0}
+.toc-section .wrap{}
+.toc-section h2{font-size:13px;letter-spacing:3px;font-family:'DM Mono',monospace;color:var(--mid);margin-bottom:28px;text-transform:uppercase}
+.toc-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:4px;
+}
+.toc-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-radius:8px;
+  text-decoration:none;color:rgba(255,255,255,.75);
+  transition:background .2s,color .2s;font-size:13px;
+}
+.toc-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.toc-num{
+  width:26px;height:26px;border-radius:6px;
+  background:rgba(90,143,168,.3);color:var(--mid);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;
+}
+
+/* ========== セクション共通 ========== */
+.section{padding:72px 0;border-bottom:1px solid var(--border)}
+.section-header{
+  display:flex;align-items:flex-start;gap:20px;margin-bottom:36px;
+}
+.sec-num{
+  width:56px;height:56px;border-radius:14px;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;flex-shrink:0;
+  font-family:'DM Mono',monospace;
+  box-shadow:0 4px 16px rgba(44,95,124,.3);
+}
+.section-header-text{}
+.section-header-text h2{font-size:26px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.section-header-text p{font-size:13px;color:var(--muted)}
+
+/* ========== SVGイラストエリア ========== */
+.svg-wrap{
+  display:flex;justify-content:center;margin:32px 0;
+}
+.svg-wrap svg{max-width:100%;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1)}
+
+/* ========== Callout ========== */
+.callout{
+  display:flex;gap:14px;border-radius:12px;padding:16px 20px;margin:20px 0;
+}
+.callout-info  {background:var(--light);border-left:4px solid var(--primary)}
+.callout-warn  {background:var(--amber-lt);border-left:4px solid var(--amber)}
+.callout-tip   {background:var(--green-lt);border-left:4px solid var(--green)}
+.callout-purple{background:var(--purple-lt);border-left:4px solid var(--purple)}
+.callout-red   {background:var(--red-lt);border-left:4px solid var(--red)}
+.callout .ico{font-size:22px;flex-shrink:0;margin-top:1px}
+.callout .body h4{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--navy)}
+.callout .body p{font-size:13px;color:var(--muted);line-height:1.75}
+.callout .body p a{color:var(--primary)}
+
+/* ========== ステップ ========== */
+.steps{display:flex;flex-direction:column;gap:14px;margin:20px 0}
+.step{
+  display:flex;gap:16px;background:var(--white);
+  border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.step-n{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;flex-shrink:0;margin-top:1px;
+  font-family:'DM Mono',monospace;
+}
+.step-body h4{font-size:14px;font-weight:700;color:var(--primary);margin-bottom:5px}
+.step-body p{font-size:13px;color:var(--muted);line-height:1.75}
+
+/* ========== モードカード ========== */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}
+.mode-card{
+  background:var(--white);border:1px solid var(--border);
+  border-radius:14px;padding:22px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+  position:relative;overflow:hidden;
+}
+.mode-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+}
+.mode-card.c1::before{background:linear-gradient(90deg,var(--primary),var(--mid))}
+.mode-card.c2::before{background:linear-gradient(90deg,var(--green),#6dbf8f)}
+.mode-card.c3::before{background:linear-gradient(90deg,var(--gold),#e8b86a)}
+.mode-card.c4::before{background:linear-gradient(90deg,var(--purple),#8b6bd8)}
+.mode-icon{font-size:32px;margin-bottom:10px}
+.mode-card h3{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:8px}
+.mode-card p{font-size:12px;color:var(--muted);line-height:1.75}
+.tag{
+  display:inline-block;font-size:10px;padding:2px 10px;
+  border-radius:10px;margin-top:10px;font-weight:700;
+}
+.tag-blue  {background:var(--light);color:var(--primary)}
+.tag-green {background:var(--green-lt);color:var(--green)}
+.tag-gold  {background:var(--gold-lt);color:var(--gold)}
+.tag-purple{background:var(--purple-lt);color:var(--purple)}
+
+/* ========== テーブル ========== */
+.tbl{
+  width:100%;border-collapse:collapse;font-size:13px;
+  margin:16px 0;border-radius:12px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.tbl th{
+  background:var(--primary);color:#fff;
+  padding:10px 16px;text-align:left;font-size:12px;font-weight:600;
+}
+.tbl td{padding:10px 16px;border-bottom:1px solid var(--border)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:nth-child(even) td{background:var(--light)}
+.tbl td.r{text-align:right;font-weight:700;color:var(--primary);font-family:'DM Mono',monospace}
+
+/* ========== 忘却曲線レベルバッジ ========== */
+.lv{
+  display:inline-block;width:44px;text-align:center;
+  border-radius:6px;padding:2px 0;font-size:11px;font-weight:700;color:#fff;
+  font-family:'DM Mono',monospace;
+}
+.lv0{background:#9e9e9e}.lv1{background:#e53935}.lv2{background:#f9a825}
+.lv3{background:#7cb342}.lv4{background:#43a047}.lv5{background:#1e88e5}
+
+/* ========== 設定トグル ========== */
+.setting-card{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:16px 0}
+.setting-head{background:var(--primary);color:#fff;padding:10px 18px;font-size:13px;font-weight:700}
+.setting-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 18px;border-bottom:1px solid var(--border);
+}
+.setting-row:last-child{border-bottom:none}
+.setting-lbl{font-size:13px;font-weight:500}
+.setting-desc{font-size:11px;color:var(--muted);margin-top:1px}
+.toggle{
+  width:38px;height:22px;border-radius:11px;
+  background:var(--primary);position:relative;flex-shrink:0;
+}
+.toggle::after{
+  content:'';position:absolute;right:3px;top:3px;
+  width:16px;height:16px;border-radius:50%;background:#fff;
+}
+.toggle.off{background:#cbd5dc}
+.toggle.off::after{right:auto;left:3px}
+.badge-link{font-size:12px;color:var(--mid)}
+
+/* ========== 2カラム ========== */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+
+/* ========== スクリーンモック ========== */
+.phone-wrap{display:flex;justify-content:center;margin:24px 0}
+
+/* ========== h3 ========== */
+.sh3{
+  font-size:16px;font-weight:700;color:var(--primary);
+  margin:32px 0 14px;display:flex;align-items:center;gap:8px;
+}
+.sh3::before{
+  content:'';display:block;width:4px;height:18px;
+  border-radius:2px;background:var(--primary);flex-shrink:0;
+}
+
+/* ========== 本文 ========== */
+.prose{font-size:13px;color:var(--muted);line-height:1.85;margin-bottom:14px}
+.prose strong{color:var(--text)}
+
+/* ========== リンクリスト ========== */
+.link-list{list-style:none;margin:12px 0}
+.link-list li{padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.link-list li:last-child{border-bottom:none}
+.link-list a{color:var(--primary);word-break:break-all}
+
+/* ========== footer ========== */
+footer{
+  text-align:center;padding:48px 32px;color:var(--muted);font-size:12px;
+  border-top:1px solid var(--border);line-height:2;
+}
+footer a{color:var(--mid)}
+
+/* ========== responsive ========== */
+@media(max-width:640px){
+  .cover h1{font-size:30px}
+  .toc-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr}
+  .mode-grid{grid-template-columns:1fr}
+  .wrap{padding:0 16px}
+  .section{padding:48px 0}
+}
+</style>
+
+</head><body>
+<div class="cover"><div class="cover-inner">
+  <span class="cover-eyebrow">USER MANUAL</span>
+  <h1><em>暗記</em>アプリ</h1>
+  <p class="cover-sub">タップで隠して、繰り返し覚える</p>
+  <span class="cover-ver">東洋医学 学習スイート 収録アプリ</span>
+  <div class="cover-chips"><div class="chip"><strong>👆</strong>タップで開閉</div><div class="chip"><strong>🗂️</strong>5カテゴリ収録</div><div class="chip"><strong>🔎</strong>検索・一括表示</div><div class="chip"><strong>🔤</strong>文字サイズ調整</div></div>
+  <div class="cover-credits">東洋医学 学習スイート<br>制作者：大阪行岡医療専門学校長柄校　鍼灸科　75期生　藤本</div>
+</div></div>
+<div class="toc-section"><div class="wrap"><h2>TABLE OF CONTENTS</h2><div class="toc-grid"><a class="toc-item" href="#a1"><span class="toc-num">01</span>このアプリについて</a><a class="toc-item" href="#a2"><span class="toc-num">02</span>収録カテゴリ</a><a class="toc-item" href="#a3"><span class="toc-num">03</span>経穴カテゴリの4つのタブ</a><a class="toc-item" href="#a4"><span class="toc-num">04</span>欧文略語の使い方</a><a class="toc-item" href="#a5"><span class="toc-num">05</span>便利な機能</a><a class="toc-item" href="#a6"><span class="toc-num">06</span>困ったときは</a></div></div></div>
+<div class="section" id="a1"><div class="wrap">
+  <div class="section-header"><div class="sec-num">01</div>
+  <div class="section-header-text"><h2>このアプリについて</h2><p>タップで隠して覚える</p></div></div>
+  <p class="prose">「暗記アプリ」は、国家試験で問われる暗記項目を、カード形式で繰り返し覚えるためのアプリです。答えの部分が「？」で隠されており、タップすると答えが出て、もう一度タップで隠れます。隠す・出すを繰り返しながら自己テストできます。</p><div class="callout callout-info"><div class="ico">🌐</div><div class="body"><h4>オンライン専用</h4><p>このアプリはオンライン専用です。起動のたびにインターネットからデータを読み込みます。</p></div></div><div class="callout callout-tip"><div class="ico">👆</div><div class="body"><h4>基本の操作</h4><p>「？」をタップ＝答えを表示／もう一度タップ＝再び隠す。項目によっては複数の箇所がそれぞれ独立してタップで開閉します。</p></div></div>
+</div></div><div class="section" id="a2"><div class="wrap">
+  <div class="section-header"><div class="sec-num">02</div>
+  <div class="section-header-text"><h2>収録カテゴリ</h2><p>5つの学習カテゴリ</p></div></div>
+  <table class="tbl"><tr><th>カテゴリ</th><th>内容</th></tr><tr><td>五行色体表</td><td>自然界・人体・飲食物などの五行配当</td></tr><tr><td>経穴</td><td>経絡経穴（361穴）・要穴表・骨度法・筋肉の4つ</td></tr><tr><td>六部定位脈診・難経六十九難</td><td>補母瀉子の本治法・経穴選定</td></tr><tr><td>脳神経</td><td>12対の脳神経とその働き</td></tr><tr><td>欧文略語</td><td>国家試験出題基準の欧文略語集（全100語・2026年出題基準準拠）</td></tr></table>
+</div></div><div class="section" id="a3"><div class="wrap">
+  <div class="section-header"><div class="sec-num">03</div>
+  <div class="section-header-text"><h2>経穴カテゴリの4つのタブ</h2><p>一覧・要穴・骨度・筋肉</p></div></div>
+  <p class="prose">「経穴」カテゴリには、上部に4つのタブがあります。</p><table class="tbl"><tr><th>タブ</th><th>内容</th></tr><tr><td>経穴一覧</td><td>361の経穴を、経絡ごとに学習します。</td></tr><tr><td>要穴表</td><td>五兪穴・五要穴・八会穴などの分類表。</td></tr><tr><td>骨度法</td><td>各部位の骨度（寸）の一覧。部位・長さがそれぞれタップで開閉します。</td></tr><tr><td>筋肉</td><td>経穴に関連する筋肉の学習。</td></tr></table>
+</div></div><div class="section" id="a4"><div class="wrap">
+  <div class="section-header"><div class="sec-num">04</div>
+  <div class="section-header-text"><h2>欧文略語の使い方</h2><p>略語と日本語訳</p></div></div>
+  <p class="prose">欧文略語では、略語（原語）と日本語訳がそれぞれ独立して「？」で隠れています。どちらからでもタップで開示でき、略語→意味、意味→略語のどちらの方向でも自己テストできます。国家試験出題基準（2026年出題基準準拠）の全100語を収録しています。</p>
+</div></div><div class="section" id="a5"><div class="wrap">
+  <div class="section-header"><div class="sec-num">05</div>
+  <div class="section-header-text"><h2>便利な機能</h2><p>検索・一括表示・文字サイズ</p></div></div>
+  <div class="steps"><div class="step"><div class="step-n">1</div><div class="step-body"><h4>検索</h4><p>各カテゴリの検索欄にキーワードを入れると、該当する項目だけに絞り込めます。</p></div></div><div class="step"><div class="step-n">2</div><div class="step-body"><h4>すべて開く</h4><p>「すべて開く」ボタンで、隠れている答えを一括で表示できます。確認や見直しに便利です。</p></div></div><div class="step"><div class="step-n">3</div><div class="step-body"><h4>文字サイズ</h4><p>画面上部の「A−／A＋」で文字の大きさを調整できます。</p></div></div></div>
+</div></div><div class="section" id="a6"><div class="wrap">
+  <div class="section-header"><div class="sec-num">06</div>
+  <div class="section-header-text"><h2>困ったときは</h2><p>よくある質問</p></div></div>
+  <p class="prose"><strong>Q. オフラインで使えますか。</strong><br>A. オンライン専用です。起動にはインターネット接続が必要です。</p><p class="prose"><strong>Q. 答えが隠れない／開かない。</strong><br>A. 「？」または答えの部分をもう一度タップしてください。項目ごとに開閉が独立しています。文字を選択した状態になった場合は、一度別の場所をタップしてから操作してください。</p><p class="prose"><strong>Q. バージョンや更新は？</strong><br>A. バージョン表示・更新は統合ホーム側で自動管理されます。手動操作は不要です。</p>
+</div></div>
+<footer>東洋医学 学習スイート ／ <em>暗記</em>アプリ<br>本アプリは個人学習用途を想定しています。再配布・商用利用は禁止されています。</footer>
+</body></html>

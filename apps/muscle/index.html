@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<script>
+/* ===== 統合アプリ用ガード（自動挿入・元コードは未変更）=====
+   iframe 内で動くとき、各アプリ独自の Service Worker 登録／キャッシュ操作／
+   バージョン確認を無効化し、キャッシュとバージョン管理を親（統合ホーム）へ
+   一元化します。localStorage（学習データ・カルテ等）はそのまま使えます。 */
+(function(){
+  try{
+    if (window.top === window.self) return; // 単体起動時は何もしない
+
+    // 1) Service Worker を無害なスタブに
+    var swStub = {
+      register:function(){ return Promise.reject(new Error('SW disabled in integrated app')); },
+      getRegistration:function(){ return Promise.resolve(undefined); },
+      getRegistrations:function(){ return Promise.resolve([]); },
+      addEventListener:function(){}, removeEventListener:function(){},
+      get controller(){ return null; },
+      ready:new Promise(function(){})
+    };
+    try{ Object.defineProperty(navigator,'serviceWorker',{get:function(){return swStub;},configurable:true}); }catch(e){}
+
+    // 2) Cache Storage を無効化（子アプリが親のキャッシュを消さないように）
+    var noop0=function(){return Promise.resolve();};
+    function neutralizeCaches(){
+      try{
+        var cacheStub={
+          open:function(){return Promise.resolve({addAll:noop0,add:noop0,put:noop0,
+            match:function(){return Promise.resolve(undefined);},delete:function(){return Promise.resolve(false);},
+            keys:function(){return Promise.resolve([]);}});},
+          keys:function(){return Promise.resolve([]);},
+          delete:function(){return Promise.resolve(false);},
+          match:function(){return Promise.resolve(undefined);},
+          has:function(){return Promise.resolve(false);}
+        };
+        try{ Object.defineProperty(window,'caches',{get:function(){return cacheStub;},configurable:true}); }
+        catch(e){
+          // defineProperty が不可なら既存オブジェクトのメソッドを直接無害化
+          if(window.caches){
+            try{ window.caches.keys=function(){return Promise.resolve([]);}; }catch(_){}
+            try{ window.caches.delete=function(){return Promise.resolve(false);}; }catch(_){}
+            try{ window.caches.open=cacheStub.open; }catch(_){}
+          }
+        }
+      }catch(e){}
+    }
+    neutralizeCaches();
+
+    // 3) アプリ独自の「更新」ボタンを隠す（親の「更新確認」に一本化）
+    var css='/* muscle: 非表示にする独自要素なし */';
+    function injectCss(){ try{ var s=document.createElement('style'); s.textContent=css; (document.head||document.documentElement).appendChild(s);}catch(e){} }
+    if(document.head){ injectCss(); }
+    else { document.addEventListener('DOMContentLoaded', injectCss); }
+  }catch(e){}
+
+
+  })();
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MUSCLE NAVIGATOR</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@300;400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0a;
+    --surface: #141414;
+    --card: #1c1c1c;
+    --accent: #e8ff00;
+    --accent2: #ff4444;
+    --text: #f0f0f0;
+    --muted: #666;
+    --border: #2a2a2a;
+    --fs: 1;          /* 文字サイズ倍率（A-/A+で変化） */
+  }
+  /* rem基準のレイアウトを一括拡縮（ルートのfont-sizeを倍率で変更） */
+  html { font-size: calc(100% * var(--fs)); }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Noto Sans JP',sans-serif; min-height:100vh; overflow-x:hidden; }
+
+  header { padding:2rem 2rem 1rem; border-bottom:1px solid var(--border); display:flex; align-items:flex-end; gap:1rem; flex-wrap:wrap; }
+  /* 文字サイズ調整 */
+  .fs-ctrl { display:flex; align-items:center; gap:5px; }
+  .fs-ctrl button { width:30px; height:30px; border:1px solid var(--border); background:transparent; color:var(--accent); border-radius:8px; cursor:pointer; line-height:1; font-weight:700; font-family:'Noto Sans JP',sans-serif; padding:0; transition:.15s; }
+  .fs-ctrl button:hover { border-color:var(--accent); }
+  .fs-ctrl button:active { background:var(--accent); color:var(--bg); }
+  .fs-ctrl .fs-minus { font-size:12px; } .fs-ctrl .fs-plus { font-size:16px; }
+  .fs-ctrl .fs-label { font-size:0.62rem; color:var(--muted); min-width:26px; text-align:center; }
+  header h1 { font-family:'Bebas Neue',sans-serif; font-size:clamp(2.2rem,7vw,4.5rem); letter-spacing:0.05em; line-height:1; color:var(--accent); }
+  header span { font-size:0.75rem; color:var(--muted); letter-spacing:0.2em; text-transform:uppercase; padding-bottom:0.4rem; }
+
+  .mode-tabs { display:flex; margin:2rem 2rem 0; border-bottom:1px solid var(--border); }
+  .tab-btn { flex:1; padding:1rem 1rem; background:transparent; border:none; color:var(--muted); font-family:'Noto Sans JP',sans-serif; font-size:0.82rem; cursor:pointer; transition:all 0.2s; border-bottom:3px solid transparent; text-align:left; }
+  .tab-btn .tab-num { font-family:'Bebas Neue',sans-serif; font-size:1.8rem; display:block; line-height:1; margin-bottom:0.15rem; }
+  .tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+  .tab-btn.active .tab-num { color:var(--accent); }
+
+  .panel { display:none; padding:2rem; animation:fadeIn 0.3s ease; }
+  .panel.active { display:block; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+  .section-label { font-size:0.7rem; letter-spacing:0.25em; text-transform:uppercase; color:var(--muted); margin-bottom:1rem; }
+
+  .muscle-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:0.6rem; margin-bottom:1.5rem; }
+  .muscle-btn { background:var(--card); border:1px solid var(--border); color:var(--text); padding:0.7rem 0.4rem; border-radius:4px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.78rem; text-align:center; transition:all 0.15s; line-height:1.4; }
+  .muscle-btn .icon { font-size:1.3rem; display:block; margin-bottom:0.2rem; }
+  .muscle-btn:hover { border-color:var(--accent); color:var(--accent); }
+  .muscle-btn.selected { background:var(--accent); border-color:var(--accent); color:#000; font-weight:700; }
+
+  .symptom-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(145px,1fr)); gap:0.75rem; margin-bottom:1.5rem; }
+  .symptom-btn { background:var(--card); border:1px solid var(--border); color:var(--text); padding:1rem; border-radius:4px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.85rem; text-align:left; transition:all 0.15s; }
+  .symptom-btn .s-icon { font-size:1.5rem; display:block; margin-bottom:0.35rem; }
+  .symptom-btn .s-name { font-weight:700; display:block; }
+  .symptom-btn .s-desc { font-size:0.68rem; color:var(--muted); margin-top:0.15rem; }
+  .symptom-btn.selected { background:#2a0000; border-color:var(--accent2); }
+  .symptom-btn.selected .s-name { color:var(--accent2); }
+
+  /* ===== ストレッチ/セルフケア ===== */
+  .care-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:0.75rem; margin-bottom:1.5rem; }
+  .care-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1.1rem; cursor:pointer; text-align:left; transition:all 0.15s; position:relative; overflow:hidden; }
+  .care-card::after { content:''; position:absolute; right:-20px; top:-20px; width:60px; height:60px; border-radius:50%; background:var(--accent); opacity:0.06; transition:opacity 0.2s; }
+  .care-card:hover { border-color:var(--accent); transform:translateY(-2px); }
+  .care-card:hover::after { opacity:0.14; }
+  .care-card.selected { border-color:var(--accent); background:#161a00; }
+  .care-card .c-icon { font-size:1.7rem; display:block; margin-bottom:0.4rem; }
+  .care-card .c-name { font-weight:700; font-size:0.92rem; display:block; color:var(--text); }
+  .care-card .c-meta { font-size:0.68rem; color:var(--accent); margin-top:0.3rem; letter-spacing:0.05em; }
+  .care-card .c-desc { font-size:0.7rem; color:var(--muted); margin-top:0.35rem; line-height:1.6; }
+
+  .generate-btn { width:100%; padding:1rem; background:var(--accent); border:none; border-radius:4px; color:#000; font-family:'Bebas Neue',sans-serif; font-size:1.4rem; letter-spacing:0.15em; cursor:pointer; transition:all 0.2s; margin-bottom:2rem; }
+  .generate-btn:hover { background:#fff; transform:translateY(-1px); }
+  .generate-btn:disabled { background:#333; color:var(--muted); cursor:not-allowed; transform:none; }
+  .generate-btn-red { background:var(--accent2); color:#fff; }
+  .generate-btn-red:hover { background:#ff6666; }
+
+  .results { display:none; }
+  .results.visible { display:block; }
+  .results-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.2rem; padding-bottom:1rem; border-bottom:1px solid var(--border); }
+  .results-title { font-family:'Bebas Neue',sans-serif; font-size:1.8rem; letter-spacing:0.05em; }
+  .results-count { font-size:0.75rem; color:var(--muted); letter-spacing:0.1em; }
+
+  .plan-summary { background:#0f0f0f; border:1px solid var(--border); border-radius:6px; padding:1.1rem 1.25rem; margin-bottom:1.25rem; font-size:0.82rem; color:#aaa; line-height:1.8; }
+  .plan-summary strong { color:var(--text); }
+
+  .exercise-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1.25rem; margin-bottom:0.6rem; cursor:pointer; position:relative; overflow:hidden; transition:border-color 0.15s; }
+  .exercise-card::before { content:''; position:absolute; left:0;top:0;bottom:0; width:3px; background:var(--accent); }
+  .exercise-card.symptom::before { background:var(--accent2); }
+  .exercise-card:hover { border-color:#444; }
+  .card-top { display:flex; justify-content:space-between; align-items:flex-start; gap:0.5rem; }
+  .ex-name { font-weight:700; font-size:0.95rem; margin-bottom:0.25rem; }
+  .ex-target { font-size:0.7rem; color:var(--accent); letter-spacing:0.08em; }
+  .ex-target.red { color:var(--accent2); }
+  .ex-badges { display:flex; gap:0.4rem; flex-wrap:wrap; margin-top:0.45rem; }
+  .badge { font-size:0.65rem; padding:0.18rem 0.5rem; border-radius:2px; background:#222; color:var(--muted); white-space:nowrap; }
+  .toggle-icon { font-size:0.9rem; color:var(--muted); flex-shrink:0; transition:transform 0.2s; margin-top:0.2rem; }
+  .exercise-card.open .toggle-icon { transform:rotate(180deg); }
+  .ex-detail { display:none; margin-top:1rem; padding-top:1rem; border-top:1px solid var(--border); font-size:0.82rem; color:#bbb; line-height:1.75; }
+  .ex-detail.open { display:block; animation:fadeIn 0.2s ease; }
+  .ex-sets { margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap; }
+  .set-box { background:#0a0a0a; border:1px solid var(--border); border-radius:3px; padding:0.4rem 0.75rem; font-size:0.78rem; text-align:center; }
+  .set-box span { display:block; font-size:0.6rem; color:var(--muted); }
+  .caution-text { margin-top:0.75rem; color:#ffcc44; font-size:0.75rem; }
+
+  /* ===== form points & how-to ===== */
+  .ex-howto { color:#cfcfcf; }
+  .ex-howto strong { color:var(--accent); font-size:0.78rem; letter-spacing:0.05em; }
+  .form-points { background:#0d0f00; border:1px solid #33370a; border-radius:5px; padding:0.75rem 0.9rem; margin-top:0.8rem; }
+  .form-points .fp-title { color:var(--accent); font-size:0.74rem; font-weight:700; letter-spacing:0.05em; margin-bottom:0.45rem; }
+  .form-points ul { list-style:none; padding:0; margin:0; }
+  .form-points li { font-size:0.78rem; color:#cfcfcf; padding:0.18rem 0 0.18rem 1.1rem; position:relative; line-height:1.55; }
+  .form-points li::before { content:'▸'; position:absolute; left:0; color:var(--accent); }
+
+  .to-workout-btn { margin-top:0.9rem; width:100%; padding:0.65rem; background:#0a0a0a; border:1px solid var(--accent); color:var(--accent); border-radius:4px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.82rem; font-weight:700; transition:all 0.15s; }
+  .to-workout-btn:hover { background:var(--accent); color:#000; }
+  .to-workout-btn.added { background:#161a00; color:var(--accent); border-color:#33370a; }
+
+  /* ===== result filters ===== */
+  .filter-section { background:#0f0f0f; border:1px solid var(--border); border-radius:6px; padding:1rem 1.1rem; margin-bottom:1.25rem; }
+  .filter-section .filter-label { font-size:0.68rem; letter-spacing:0.2em; text-transform:uppercase; color:var(--muted); margin:0 0 0.5rem; }
+  .filter-section .filter-label:not(:first-child) { margin-top:1rem; }
+  .filter-chips { display:flex; flex-wrap:wrap; gap:0.5rem; }
+
+  /* ===== floating workout bar ===== */
+  .workout-fab { position:fixed; bottom:1.2rem; right:1.2rem; left:1.2rem; max-width:480px; margin:0 auto; background:linear-gradient(135deg,#1c1c1c,#262600); border:1px solid var(--accent); border-radius:10px; padding:0.9rem 1.1rem; display:none; align-items:center; justify-content:space-between; gap:0.8rem; box-shadow:0 8px 30px rgba(0,0,0,0.6); z-index:50; animation:fadeIn 0.3s ease; }
+  .workout-fab.visible { display:flex; }
+  .workout-fab .wf-info { font-size:0.82rem; }
+  .workout-fab .wf-count { font-family:'Bebas Neue',sans-serif; font-size:1.5rem; color:var(--accent); line-height:1; }
+  .workout-fab .wf-label { font-size:0.66rem; color:var(--muted); letter-spacing:0.1em; }
+  .workout-fab .wf-start { background:var(--accent); border:none; color:#000; font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:0.1em; padding:0.55rem 1.3rem; border-radius:6px; cursor:pointer; transition:all 0.15s; }
+  .workout-fab .wf-start:hover { background:#fff; }
+  .workout-fab .wf-view { background:transparent; border:none; color:var(--muted); font-size:0.72rem; cursor:pointer; text-decoration:underline; }
+
+  /* ===== timer overlay ===== */
+  .timer-overlay { position:fixed; inset:0; background:rgba(8,8,8,0.97); z-index:100; display:none; flex-direction:column; padding:1.5rem; overflow-y:auto; }
+  .timer-overlay.visible { display:flex; animation:fadeIn 0.25s ease; }
+  .timer-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+  .timer-head .th-progress { font-size:0.78rem; color:var(--muted); letter-spacing:0.1em; }
+  .timer-head .th-close { background:transparent; border:1px solid var(--border); color:var(--muted); border-radius:4px; padding:0.4rem 0.8rem; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.78rem; }
+  .timer-head .th-close:hover { border-color:var(--accent2); color:var(--accent2); }
+  .timer-progress-bar { height:6px; background:#1a1a1a; border-radius:3px; overflow:hidden; margin-bottom:1.5rem; }
+  .timer-progress-fill { height:100%; background:var(--accent); border-radius:3px; transition:width 0.4s ease; }
+  .timer-main { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; }
+  .timer-phase { font-family:'Bebas Neue',sans-serif; font-size:1.4rem; letter-spacing:0.2em; color:var(--accent); margin-bottom:0.3rem; }
+  .timer-phase.rest { color:#4caf50; }
+  .timer-ex-name { font-size:1.5rem; font-weight:700; margin-bottom:0.3rem; line-height:1.3; }
+  .timer-ex-meta { font-size:0.9rem; color:#aaa; margin-bottom:1.5rem; }
+  .timer-ring { position:relative; width:240px; height:240px; margin:0 auto 1.5rem; }
+  .timer-ring svg { transform:rotate(-90deg); }
+  .timer-ring .ring-bg { fill:none; stroke:#1a1a1a; stroke-width:12; }
+  .timer-ring .ring-fg { fill:none; stroke:var(--accent); stroke-width:12; stroke-linecap:round; transition:stroke-dashoffset 0.3s linear; }
+  .timer-ring.rest .ring-fg { stroke:#4caf50; }
+  .timer-count { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .timer-count .tc-num { font-family:'Bebas Neue',sans-serif; font-size:4.5rem; line-height:1; color:var(--text); }
+  .timer-count .tc-sub { font-size:0.8rem; color:var(--muted); margin-top:0.3rem; }
+  .timer-formpts { background:#0d0f00; border:1px solid #33370a; border-radius:6px; padding:0.8rem 1rem; max-width:420px; width:100%; margin:0 auto 1.5rem; text-align:left; }
+  .timer-formpts .tf-title { color:var(--accent); font-size:0.72rem; font-weight:700; margin-bottom:0.4rem; }
+  .timer-formpts ul { list-style:none; padding:0; margin:0; }
+  .timer-formpts li { font-size:0.76rem; color:#cfcfcf; padding:0.15rem 0 0.15rem 1rem; position:relative; }
+  .timer-formpts li::before { content:'▸'; position:absolute; left:0; color:var(--accent); }
+  .timer-controls { display:flex; gap:0.7rem; justify-content:center; max-width:420px; width:100%; margin:0 auto; flex-wrap:wrap; }
+  .timer-btn { flex:1; min-width:90px; padding:0.85rem; border-radius:6px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.9rem; font-weight:700; border:1px solid var(--border); background:var(--card); color:var(--text); transition:all 0.15s; }
+  .timer-btn:hover { border-color:var(--accent); }
+  .timer-btn.primary { background:var(--accent); color:#000; border-color:var(--accent); }
+  .timer-btn.primary:hover { background:#fff; }
+  .timer-btn.danger { color:var(--accent2); border-color:#3a1010; }
+
+  /* workout review (pre-start) */
+  .workout-review { max-width:480px; margin:0 auto; width:100%; }
+  .wr-item { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:0.8rem 1rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; gap:0.6rem; }
+  .wr-item .wr-name { font-weight:700; font-size:0.88rem; }
+  .wr-item .wr-meta { font-size:0.68rem; color:var(--muted); margin-top:0.15rem; }
+  .wr-item .wr-x { color:var(--accent2); cursor:pointer; font-size:1.1rem; }
+  .wr-settings { background:#0f0f0f; border:1px solid var(--border); border-radius:6px; padding:1rem 1.1rem; margin:1rem 0; }
+  .wr-settings .wrs-row { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.7rem; font-size:0.85rem; }
+  .wr-settings .wrs-row:last-child { margin-bottom:0; }
+  .wr-settings input { width:90px; background:#0a0a0a; border:1px solid var(--border); color:var(--text); padding:0.4rem 0.6rem; border-radius:4px; font-family:'Noto Sans JP',sans-serif; font-size:0.85rem; text-align:center; }
+
+  .mm-start-btn { width:100%; margin-top:0.9rem; padding:0.75rem; background:var(--accent); border:none; color:#000; border-radius:6px; cursor:pointer; font-family:'Bebas Neue',sans-serif; font-size:1.25rem; letter-spacing:0.08em; transition:all 0.15s; }
+  .mm-start-btn:hover { background:#fff; }
+
+  /* タイマー方式の選択 */
+  .mode-select { margin:1.1rem 0; }
+  .mode-select .ms-label { font-size:0.72rem; letter-spacing:0.15em; text-transform:uppercase; color:var(--muted); margin-bottom:0.5rem; }
+  .mode-opt { display:block; width:100%; text-align:left; background:#0f0f0f; border:1px solid var(--border); border-radius:6px; padding:0.85rem 1rem; margin-bottom:0.55rem; cursor:pointer; transition:all 0.15s; color:var(--text); font-family:'Noto Sans JP',sans-serif; }
+  .mode-opt:hover { border-color:var(--accent); }
+  .mode-opt.selected { border-color:var(--accent); background:#161a00; }
+  .mode-opt .mo-name { font-weight:700; font-size:0.92rem; display:flex; align-items:center; gap:0.5rem; }
+  .mode-opt .mo-name .mo-radio { width:16px; height:16px; border-radius:50%; border:2px solid var(--muted); flex-shrink:0; display:inline-block; position:relative; }
+  .mode-opt.selected .mo-name .mo-radio { border-color:var(--accent); }
+  .mode-opt.selected .mo-name .mo-radio::after { content:''; position:absolute; inset:3px; border-radius:50%; background:var(--accent); }
+  .mode-opt .mo-desc { font-size:0.74rem; color:var(--muted); margin-top:0.4rem; line-height:1.6; padding-left:1.5rem; }
+
+  .timer-phase.hold { color:#ff9d2e; }
+  .timer-ring.hold .ring-fg { stroke:#ff9d2e; }
+
+  /* ===== レベル判定モード ===== */
+  .quiz-q { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1.1rem 1.25rem; margin-bottom:0.8rem; }
+  .quiz-q .q-title { font-size:0.9rem; font-weight:700; margin-bottom:0.7rem; }
+  .quiz-q .q-title .q-no { color:var(--accent); font-family:'Bebas Neue',sans-serif; font-size:1.2rem; margin-right:0.5rem; }
+  .quiz-q .q-sub { font-size:0.7rem; color:var(--muted); margin-bottom:0.7rem; line-height:1.6; }
+  .opt-row { display:flex; flex-wrap:wrap; gap:0.5rem; }
+  .opt-btn { background:#0a0a0a; border:1px solid var(--border); color:var(--text); padding:0.55rem 0.9rem; border-radius:4px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.8rem; transition:all 0.15s; }
+  .opt-btn:hover { border-color:var(--accent); }
+  .opt-btn.selected { background:var(--accent); border-color:var(--accent); color:#000; font-weight:700; }
+  .num-input { background:#0a0a0a; border:1px solid var(--border); color:var(--text); padding:0.55rem 0.8rem; border-radius:4px; font-family:'Noto Sans JP',sans-serif; font-size:0.85rem; width:110px; }
+  .num-input:focus { outline:none; border-color:var(--accent); }
+
+  .level-result { display:none; margin-top:1.5rem; }
+  .level-result.visible { display:block; animation:fadeIn 0.3s ease; }
+  .level-badge-big { text-align:center; padding:2rem 1rem; border-radius:8px; margin-bottom:1.25rem; border:1px solid var(--border); background:linear-gradient(135deg,#0f0f0f,#1a1a1a); }
+  .level-badge-big .lv-label { font-size:0.7rem; letter-spacing:0.25em; color:var(--muted); text-transform:uppercase; }
+  .level-badge-big .lv-name { font-family:'Bebas Neue',sans-serif; font-size:3.5rem; line-height:1; letter-spacing:0.05em; margin:0.5rem 0; }
+  .level-badge-big.beginner .lv-name { color:#4caf50; }
+  .level-badge-big.intermediate .lv-name { color:var(--accent); }
+  .level-badge-big.advanced .lv-name { color:var(--accent2); }
+  .level-badge-big .lv-score { font-size:0.78rem; color:#aaa; }
+  .level-badge-big .lv-desc { font-size:0.8rem; color:#bbb; margin-top:0.8rem; line-height:1.7; max-width:480px; margin-left:auto; margin-right:auto; }
+  .level-bar { height:8px; background:#0a0a0a; border-radius:4px; overflow:hidden; margin:1rem auto 0; max-width:300px; }
+  .level-bar-fill { height:100%; background:linear-gradient(90deg,#4caf50,#e8ff00,#ff4444); border-radius:4px; transition:width 0.6s ease; }
+
+  /* ===== カスタマイズモード ===== */
+  .cust-toolbar { display:flex; flex-wrap:wrap; gap:0.6rem; align-items:center; margin-bottom:1.25rem; }
+  .filter-chip { background:var(--card); border:1px solid var(--border); color:var(--muted); padding:0.45rem 0.85rem; border-radius:20px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.75rem; transition:all 0.15s; }
+  .filter-chip:hover { border-color:var(--accent); color:var(--text); }
+  .filter-chip.active { background:var(--accent); border-color:var(--accent); color:#000; font-weight:700; }
+  .search-box { background:var(--card); border:1px solid var(--border); color:var(--text); padding:0.55rem 0.9rem; border-radius:4px; font-family:'Noto Sans JP',sans-serif; font-size:0.85rem; flex:1; min-width:160px; }
+  .search-box:focus { outline:none; border-color:var(--accent); }
+
+  .cust-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:0.9rem 1rem; margin-bottom:0.5rem; display:flex; justify-content:space-between; align-items:center; gap:0.8rem; transition:border-color 0.15s; }
+  .cust-card:hover { border-color:#444; }
+  .cust-card.added { border-color:var(--accent); background:#161a00; }
+  .cust-card .cc-info { flex:1; min-width:0; }
+  .cust-card .cc-name { font-weight:700; font-size:0.88rem; }
+  .cust-card .cc-meta { font-size:0.68rem; color:var(--muted); margin-top:0.2rem; }
+  .cust-card .cc-meta .lv { color:var(--accent); }
+  .add-btn { background:#0a0a0a; border:1px solid var(--accent); color:var(--accent); width:34px; height:34px; border-radius:50%; cursor:pointer; font-size:1.3rem; line-height:1; flex-shrink:0; transition:all 0.15s; }
+  .add-btn:hover { background:var(--accent); color:#000; }
+  .add-btn.remove { border-color:var(--accent2); color:var(--accent2); }
+  .add-btn.remove:hover { background:var(--accent2); color:#fff; }
+
+  .my-menu { background:#0f0f0f; border:1px solid var(--accent); border-radius:8px; padding:1.1rem 1.25rem; margin-bottom:1.5rem; }
+  .my-menu .mm-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.8rem; }
+  .my-menu .mm-title { font-family:'Bebas Neue',sans-serif; font-size:1.4rem; letter-spacing:0.05em; color:var(--accent); }
+  .my-menu .mm-empty { font-size:0.8rem; color:var(--muted); padding:0.5rem 0; }
+  .mm-item { display:flex; justify-content:space-between; align-items:center; padding:0.5rem 0; border-bottom:1px solid var(--border); font-size:0.82rem; gap:0.5rem; }
+  .mm-item:last-child { border-bottom:none; }
+  .mm-item .mm-x { color:var(--accent2); cursor:pointer; font-size:1.1rem; flex-shrink:0; }
+
+  /* ===== 筋トレ日誌モード ===== */
+  .log-form { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:1.25rem; margin-bottom:1.5rem; }
+  .log-form .lf-row { margin-bottom:0.9rem; }
+  .log-form label { display:block; font-size:0.72rem; color:var(--muted); letter-spacing:0.1em; margin-bottom:0.4rem; text-transform:uppercase; }
+  .log-form input, .log-form select, .log-form textarea { width:100%; background:#0a0a0a; border:1px solid var(--border); color:var(--text); padding:0.6rem 0.8rem; border-radius:4px; font-family:'Noto Sans JP',sans-serif; font-size:0.85rem; }
+  .log-form input:focus, .log-form select:focus, .log-form textarea:focus { outline:none; border-color:var(--accent); }
+  .log-form textarea { resize:vertical; min-height:60px; }
+  .lf-grid3 { display:grid; grid-template-columns:repeat(3,1fr); gap:0.6rem; }
+
+  .log-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:0.6rem; margin-bottom:1.5rem; }
+  .stat-box { background:#0f0f0f; border:1px solid var(--border); border-radius:6px; padding:1rem; text-align:center; }
+  .stat-box .st-num { font-family:'Bebas Neue',sans-serif; font-size:2.2rem; color:var(--accent); line-height:1; }
+  .stat-box .st-label { font-size:0.65rem; color:var(--muted); letter-spacing:0.1em; text-transform:uppercase; margin-top:0.3rem; }
+
+  .log-entry { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1rem 1.15rem; margin-bottom:0.6rem; position:relative; }
+  .log-entry::before { content:''; position:absolute; left:0; top:0; bottom:0; width:3px; background:var(--accent); border-radius:6px 0 0 6px; }
+  .log-entry .le-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; }
+  .log-entry .le-date { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:0.05em; }
+  .log-entry .le-x { color:var(--accent2); cursor:pointer; font-size:1.1rem; }
+  .log-entry .le-body { font-size:0.82rem; color:#bbb; line-height:1.7; }
+  .log-entry .le-tag { display:inline-block; background:#222; color:var(--muted); font-size:0.65rem; padding:0.15rem 0.5rem; border-radius:2px; margin-right:0.4rem; margin-bottom:0.3rem; }
+  .log-entry .le-note { margin-top:0.5rem; color:#999; font-size:0.78rem; font-style:italic; }
+  .empty-state { text-align:center; color:var(--muted); padding:2.5rem 1rem; font-size:0.85rem; }
+
+  @media(max-width:480px){
+    .muscle-grid{grid-template-columns:repeat(3,1fr);}
+    .symptom-grid{grid-template-columns:repeat(2,1fr);}
+    header{padding:1.2rem 1rem 0.7rem;}
+    .panel{padding:1.2rem 1rem;}
+    .mode-tabs{margin:1.2rem 1rem 0; flex-wrap:wrap; border-bottom:none; gap:6px;}
+    .tab-btn{flex:1 1 30%; min-width:0; font-size:0.72rem; text-align:center; border:1px solid var(--border); border-radius:8px; padding:0.6rem 0.3rem; border-bottom:1px solid var(--border);}
+    .tab-btn.active{ border-color:var(--accent); border-bottom-color:var(--accent); background:rgba(255,255,255,.04); }
+    .tab-btn .tab-num{ font-size:1.2rem; display:inline; margin:0 0.2rem 0 0; }
+    .lf-grid3{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>MUSCLE<br>NAVIGATOR</h1>
+  <span>筋トレメニュー検索</span>
+  <div class="fs-ctrl" style="margin-left:auto">
+    <button class="fs-minus" id="fsMinus" title="文字を小さく" aria-label="文字を小さく">A−</button>
+    <span class="fs-label" id="fsLabel">標準</span>
+    <button class="fs-plus" id="fsPlus" title="文字を大きく" aria-label="文字を大きく">A＋</button>
+  </div>
+  <button onclick="window.open('./manual.html','_blank')" title="使用説明書" style="border:1px solid var(--border);background:transparent;color:var(--accent);border-radius:8px;padding:8px 12px;font-size:0.8rem;cursor:pointer;white-space:nowrap;font-family:'Noto Sans JP',sans-serif">📖 説明書</button>
+</header>
+
+<div class="mode-tabs">
+  <button class="tab-btn active" onclick="switchTab('level')">
+    <span class="tab-num">①</span>運動レベル判定
+  </button>
+  <button class="tab-btn" onclick="switchTab('muscle')">
+    <span class="tab-num">②</span>筋肉から探す
+  </button>
+  <button class="tab-btn" onclick="switchTab('symptom')">
+    <span class="tab-num">③</span>症状から探す
+  </button>
+  <button class="tab-btn" onclick="switchTab('care')">
+    <span class="tab-num">④</span>ストレッチ/セルフケア
+  </button>
+  <button class="tab-btn" onclick="switchTab('custom')">
+    <span class="tab-num">⑤</span>カスタマイズ
+  </button>
+  <button class="tab-btn" onclick="switchTab('journal')">
+    <span class="tab-num">⑥</span>筋トレ日誌
+  </button>
+</div>
+
+<!-- ① 運動レベル判定 -->
+<div class="panel active" id="panel-level">
+  <p class="section-label">あなたの運動レベルを判定します</p>
+  <div id="quiz-container"></div>
+  <button class="generate-btn" id="level-btn" onclick="calcLevel()">レベルを判定する</button>
+  <div class="level-result" id="level-result"></div>
+</div>
+
+<!-- ② 筋肉から探す -->
+<div class="panel" id="panel-muscle">
+  <p class="section-label">鍛えたい部位を選択（複数可）</p>
+  <div class="muscle-grid" id="muscle-grid"></div>
+  <p class="section-label">絞り込み（任意）</p>
+  <div class="filter-section">
+    <div class="filter-label">難易度</div>
+    <div class="filter-chips">
+      <button class="filter-chip active" data-grp="lv" data-val="all" onclick="setResultFilter('lv','all')">すべて</button>
+      <button class="filter-chip" data-grp="lv" data-val="初級" onclick="setResultFilter('lv','初級')">初級</button>
+      <button class="filter-chip" data-grp="lv" data-val="中級" onclick="setResultFilter('lv','中級')">中級</button>
+      <button class="filter-chip" data-grp="lv" data-val="上級" onclick="setResultFilter('lv','上級')">上級</button>
+    </div>
+    <div class="filter-label">器具</div>
+    <div class="filter-chips">
+      <button class="filter-chip active" data-grp="eq" data-val="all" onclick="setResultFilter('eq','all')">すべて</button>
+      <button class="filter-chip" data-grp="eq" data-val="自重" onclick="setResultFilter('eq','自重')">自重・器具なし</button>
+      <button class="filter-chip" data-grp="eq" data-val="椅子" onclick="setResultFilter('eq','椅子')">椅子・台</button>
+      <button class="filter-chip" data-grp="eq" data-val="ダンベル" onclick="setResultFilter('eq','ダンベル')">ダンベル</button>
+      <button class="filter-chip" data-grp="eq" data-val="チューブ" onclick="setResultFilter('eq','チューブ')">チューブ</button>
+    </div>
+  </div>
+  <button class="generate-btn" id="muscle-btn" onclick="generateMuscle()" disabled>メニューを表示する</button>
+  <div class="results" id="muscle-results"></div>
+</div>
+
+<!-- ③ 症状から探す -->
+<div class="panel" id="panel-symptom">
+  <p class="section-label">気になる症状を選択</p>
+  <div class="symptom-grid" id="symptom-grid"></div>
+  <button class="generate-btn generate-btn-red" id="symptom-btn" onclick="generateSymptom()" disabled>改善メニューを表示する</button>
+  <div class="results" id="symptom-results"></div>
+</div>
+
+<!-- ④ ストレッチ / セルフケア -->
+<div class="panel" id="panel-care">
+  <p class="section-label">シーン・目的を選ぶ（すきま時間でOK）</p>
+  <div class="care-grid" id="care-grid"></div>
+  <div class="results" id="care-results"></div>
+</div>
+
+<!-- ⑤ カスタマイズ -->
+<div class="panel" id="panel-custom">
+  <div class="my-menu" id="my-menu"></div>
+  <p class="section-label">種目を追加（フィルタ・検索で絞り込み）</p>
+  <div class="cust-toolbar">
+    <input type="text" class="search-box" id="cust-search" placeholder="種目名・部位で検索…" oninput="renderCustList()">
+    <button class="filter-chip active" data-lv="all" onclick="setCustFilter('all')">すべて</button>
+    <button class="filter-chip" data-lv="初級" onclick="setCustFilter('初級')">初級</button>
+    <button class="filter-chip" data-lv="中級" onclick="setCustFilter('中級')">中級</button>
+    <button class="filter-chip" data-lv="上級" onclick="setCustFilter('上級')">上級</button>
+  </div>
+  <div id="cust-list"></div>
+</div>
+
+<!-- ⑥ 筋トレ日誌 -->
+<div class="panel" id="panel-journal">
+  <div class="log-stats" id="log-stats"></div>
+  <div class="log-form">
+    <p class="section-label" style="margin-bottom:1rem;">トレーニングを記録</p>
+    <div class="lf-row">
+      <label>日付</label>
+      <input type="date" id="log-date">
+    </div>
+    <div class="lf-row">
+      <label>種目名</label>
+      <input type="text" id="log-name" list="exercise-names" placeholder="例: スクワット">
+      <datalist id="exercise-names"></datalist>
+    </div>
+    <div class="lf-row lf-grid3">
+      <div><label>重量(kg)</label><input type="number" id="log-weight" placeholder="0" min="0" step="0.5"></div>
+      <div><label>回数</label><input type="number" id="log-reps" placeholder="0" min="0"></div>
+      <div><label>セット</label><input type="number" id="log-sets" placeholder="0" min="0"></div>
+    </div>
+    <div class="lf-row">
+      <label>メモ（任意）</label>
+      <textarea id="log-note" placeholder="調子・フォームの気づきなど"></textarea>
+    </div>
+    <button class="generate-btn" onclick="addLog()" style="margin-bottom:0;">記録する</button>
+  </div>
+  <p class="section-label">履歴</p>
+  <div id="log-list"></div>
+</div>
+
+<!-- フローティング・ワークアウトバー -->
+<div class="workout-fab" id="workout-fab">
+  <div class="wf-info">
+    <span class="wf-count" id="wf-count">0</span>
+    <span class="wf-label">種目をワークアウトに追加中</span>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:0.3rem;align-items:flex-end;">
+    <button class="wf-start" onclick="openWorkoutReview()">スタート ▶</button>
+    <button class="wf-view" onclick="clearWorkout()">クリア</button>
+  </div>
+</div>
+
+<!-- タイマーオーバーレイ -->
+<div class="timer-overlay" id="timer-overlay">
+  <div class="timer-head">
+    <span class="th-progress" id="th-progress"></span>
+    <button class="th-close" onclick="closeTimer()">✕ 終了</button>
+  </div>
+  <div class="timer-progress-bar"><div class="timer-progress-fill" id="timer-progress-fill" style="width:0%"></div></div>
+  <div class="timer-main" id="timer-main"></div>
+</div>
+
+<script>
+// ── 文字サイズ調整（A-/A+）：ルートfont-sizeを倍率変更し localStorage に保存 ──
+(function(){
+  const fsSteps=[0.85,1.0,1.15,1.3,1.45];
+  const fsNames=['小','標準','大','特大','最大'];
+  const FS_KEY='muscle-fs-idx';
+  let fsIdx=1;
+  try{ const s=parseInt(localStorage.getItem(FS_KEY),10); if(!isNaN(s)&&s>=0&&s<fsSteps.length) fsIdx=s; }catch(e){}
+  function applyFs(){
+    document.documentElement.style.setProperty('--fs', fsSteps[fsIdx]);
+    const lbl=document.getElementById('fsLabel'); if(lbl) lbl.textContent=fsNames[fsIdx];
+    try{ localStorage.setItem(FS_KEY, fsIdx); }catch(e){}
+  }
+  const minus=document.getElementById('fsMinus'), plus=document.getElementById('fsPlus');
+  if(minus) minus.onclick=()=>{ if(fsIdx>0){ fsIdx--; applyFs(); } };
+  if(plus)  plus.onclick=()=>{ if(fsIdx<fsSteps.length-1){ fsIdx++; applyFs(); } };
+  applyFs();
+})();
+
+const MUSCLES = [
+  {id:'chest',   label:'胸',      icon:'💪'},
+  {id:'back',    label:'背中',    icon:'🔙'},
+  {id:'shoulder',label:'肩',      icon:'🏋️'},
+  {id:'bicep',   label:'力こぶ',  icon:'💪'},
+  {id:'tricep',  label:'二の腕',  icon:'🦾'},
+  {id:'abs',     label:'腹筋',    icon:'⚡'},
+  {id:'glute',   label:'お尻',    icon:'🍑'},
+  {id:'quad',    label:'太もも前',icon:'🦵'},
+  {id:'hamstring',label:'太もも後',icon:'🦵'},
+  {id:'calf',    label:'ふくらはぎ',icon:'🦶'},
+  {id:'trap',    label:'僧帽筋',  icon:'🦒'},
+  {id:'core',    label:'体幹',    icon:'🎯'},
+  {id:'forearm', label:'前腕',    icon:'🦿'},
+  {id:'hand',    label:'手・指',  icon:'🤚'},
+  {id:'oblique', label:'横腹',    icon:'🌀'},
+  {id:'neck',    label:'首',      icon:'🦢'},
+];
+
+const SYMPTOMS = [
+  {id:'stiff_shoulder', icon:'😤', name:'肩こり',       desc:'首・肩周りの慢性的なこわばり'},
+  {id:'low_back',       icon:'😣', name:'腰痛',         desc:'腰部の痛み・重だるさ'},
+  {id:'knee_pain',      icon:'🦵', name:'膝の痛み',     desc:'膝関節の違和感・痛み'},
+  {id:'poor_posture',   icon:'🪑', name:'猫背・姿勢不良',desc:'前かがみ・巻き肩'},
+  {id:'fatigue_legs',   icon:'😴', name:'足のむくみ',   desc:'下肢のだるさ・循環不良'},
+  {id:'hip_tight',      icon:'🧘', name:'股関節の硬さ', desc:'開脚が苦手・可動域制限'},
+  {id:'headache',       icon:'🤕', name:'緊張型頭痛',   desc:'首・肩からくる頭の重さ'},
+  {id:'wrist',          icon:'✋', name:'手首・肘疲れ', desc:'デスクワーク由来の疲労'},
+  {id:'muscle_sore',    icon:'🔥', name:'筋肉痛',       desc:'運動後の筋肉の張り・痛み'},
+  {id:'whole_fatigue',  icon:'🥱', name:'全身の疲労感', desc:'だるさ・疲れが抜けない'},
+  {id:'numbness',       icon:'⚡', name:'手足の痺れ',   desc:'指先・足先のしびれ・冷え'},
+  {id:'dizziness',      icon:'💫', name:'ふらつき',     desc:'平衡感覚の低下・立ちくらみ'},
+  {id:'eye_strain',     icon:'👁', name:'眼精疲労',     desc:'目の奥の重さ・かすみ'},
+  {id:'cold_sensitivity',icon:'🧊', name:'冷え性',       desc:'手足の冷え・血行不良'},
+  {id:'sleep',          icon:'🌙', name:'寝つきが悪い', desc:'入眠困難・睡眠の質低下'},
+];
+
+// ========== 筋肉別メニューデータ ==========
+const MUSCLE_DATA = {
+  chest: {
+    summary:'大胸筋は胸の主要な筋肉で、押す動作全般に関わります。プッシュ系種目をメインに、大胸筋上部・中部・下部をバランスよく鍛えましょう。',
+    exercises:[
+      {name:'プッシュアップ（腕立て伏せ）',target:'大胸筋・上腕三頭筋・前鋸筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'10〜15回',rest:'60秒',description:'肩幅より少し広めに手をつき、体を一直線に保ちながら胸を床ギリギリまで下げる。肘は斜め後方に向ける。',caution:'腰が反らないよう腹圧を維持する'},
+      {name:'ワイドプッシュアップ',target:'大胸筋外側・内側',level:'初級',equipment:'自重',time:'4分',sets:'3',reps:'10〜12回',rest:'60秒',description:'手幅を肩幅の1.5倍に広げたプッシュアップ。胸全体を広くストレッチできる。',caution:'手首に過度な負担がかかる場合は手首を内側に向ける'},
+      {name:'ダイヤモンドプッシュアップ',target:'大胸筋内側・上腕三頭筋',level:'中級',equipment:'自重',time:'4分',sets:'3',reps:'8〜10回',rest:'60秒',description:'両手の親指と人差し指でひし形を作り、胸の真下に置いてプッシュアップ。内側の大胸筋に強い刺激。',caution:'肘が外に開かないよう注意'},
+      {name:'デクラインプッシュアップ',target:'大胸筋下部',level:'中級',equipment:'椅子・台',time:'4分',sets:'3',reps:'10回',rest:'60秒',description:'足を椅子に乗せて、上体を斜め下向きにしたプッシュアップ。大胸筋下部を集中的に鍛える。',caution:'首に力が入りすぎないよう注意'},
+      {name:'インクラインプッシュアップ',target:'大胸筋上部',level:'初級',equipment:'椅子・台',time:'4分',sets:'3',reps:'12〜15回',rest:'60秒',description:'手を台に乗せて体が斜め上向きになる形でプッシュアップ。大胸筋上部に効く。初心者の導入にも最適。',caution:'台がしっかり固定されているか確認'},
+      {name:'チェストプレス（ダンベル）',target:'大胸筋全体・三角筋前部',level:'中級',equipment:'ダンベル・ベンチ',time:'8分',sets:'4',reps:'10〜12回',rest:'90秒',description:'ベンチに仰向けになり、ダンベルを胸の高さから真上に押し上げる。下ろすときに肘が90度になるよう制御する。',caution:'ダンベルを落とさないよう手首をまっすぐ保つ'},
+      {name:'ダンベルフライ',target:'大胸筋外側・ストレッチ',level:'中級',equipment:'ダンベル・ベンチ',time:'8分',sets:'3',reps:'12回',rest:'60秒',description:'腕を弧を描くように大きく開き、胸をいっぱいに広げてから閉じる。筋肉の伸縮に意識を集中させる。',caution:'肘をわずかに曲げた状態を維持し、肩関節への負担を減らす'},
+      {name:'インクラインダンベルプレス',target:'大胸筋上部',level:'中級',equipment:'ダンベル・インクラインベンチ',time:'8分',sets:'4',reps:'8〜10回',rest:'90秒',description:'30〜45度に傾けたベンチでダンベルを押し上げる。大胸筋上部の厚みを作る代表種目。',caution:'角度を上げすぎると三角筋優位になるため45度以下に'},
+      {name:'アーチャープッシュアップ',target:'大胸筋（片側強調）',level:'上級',equipment:'自重',time:'6分',sets:'3',reps:'左右各6〜8回',rest:'90秒',description:'片腕を横に伸ばし、もう一方の腕に体重を寄せて下りる。片側に高負荷をかける自重上級種目。',caution:'伸ばした側の肩を痛めやすいので可動域を制御する'},
+      {name:'プライオメトリックプッシュアップ',target:'大胸筋・速筋・瞬発力',level:'上級',equipment:'自重',time:'6分',sets:'4',reps:'6〜10回',rest:'90秒',description:'下げた反動で床を押し、手が床から離れるほど爆発的に押し上げる。パワー向上に有効。',caution:'手首・肩への衝撃が強いので十分なウォームアップを'},
+      {name:'ワンアームプッシュアップ（補助）',target:'大胸筋・体幹安定',level:'上級',equipment:'自重',time:'7分',sets:'3',reps:'左右各3〜6回',rest:'90秒',description:'足を広げて片手で行うプッシュアップ。最大級の自重胸トレ。まずは足幅を広く取り補助する。',caution:'体幹がねじれないよう腹圧を強くかける'},
+    ]
+  },
+  back: {
+    summary:'背中の筋肉群（広背筋・僧帽筋・菱形筋）は姿勢維持と引く動作全般に関わります。多方向からのアプローチで厚みと広がりを作りましょう。自宅では「引く」動作をテーブルやチューブ、タオルで再現します。',
+    exercises:[
+      {name:'タオルローイング（ドア）',target:'広背筋・菱形筋・僧帽筋',level:'初級',equipment:'タオル・ドア',time:'6分',sets:'3',reps:'12〜15回',rest:'60秒',description:'丈夫なドアの取っ手にタオルを通して両端を握り、足をドアに近づけて体を斜めに倒す。かかと重心で立ち、タオルを引いて体を起こす。',formPoints:['肩甲骨を背骨に寄せながら肘を後方へ引く','体は頭からかかとまで一直線をキープ','腕の力でなく背中で引く意識','下ろすときもゆっくりコントロール'],caution:'ドアと取っ手が頑丈か必ず確認する'},
+      {name:'インバーテッドロウ（テーブル）',target:'広背筋・菱形筋・僧帽筋',level:'初級〜中級',equipment:'頑丈なテーブル',time:'6分',sets:'3',reps:'10〜15回',rest:'60秒',description:'頑丈なテーブルの下に仰向けになり、縁を肩幅で握る。体を一直線にして胸をテーブルの縁に引き寄せ、ゆっくり下ろす。懸垂の代わりになる自宅向け種目。',formPoints:['胸を縁に近づけ肩甲骨を寄せる','お尻が落ちないよう体を板のように保つ','膝を曲げて立てると簡単・伸ばすと難しい','肘を体の横に沿わせる'],caution:'テーブルが体重で倒れない頑丈なものを使う'},
+      {name:'ダンベルローイング',target:'広背筋・菱形筋',level:'中級',equipment:'ダンベル・椅子',time:'8分',sets:'3',reps:'10〜12回（片側）',rest:'60秒',description:'片手と片膝を椅子につき背中を床と平行にする。反対の手でダンベルを持ち、脇腹に向けて肘を後方へ引き上げ、ゆっくり下ろす。',formPoints:['肘を体に沿わせ後ろへ引く','トップで肩甲骨を背骨に寄せる','背中は丸めずフラットを保つ','体をひねって反動を使わない'],caution:'腰が反らないよう体幹を固定する'},
+      {name:'スーパーマン',target:'脊柱起立筋・臀筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'12〜15回',rest:'45秒',description:'うつ伏せで両手両足を伸ばす。手足を同時に床から持ち上げ、2秒キープしてゆっくり下ろす。背面全体を鍛える。',formPoints:['視線は床に向け首を反らさない','お腹を軽く締めて腰を守る','手足は遠くへ伸ばすイメージ','反動でなく筋肉で持ち上げる'],caution:'腰に痛みが出たら高さを下げる'},
+      {name:'フェイスプル（チューブ）',target:'僧帽筋中下部・菱形筋・外旋筋',level:'初級',equipment:'チューブ・ドア',time:'5分',sets:'3',reps:'15回',rest:'45秒',description:'チューブをドアの高い位置に固定し、両手で握って顔に向けて肘を後方へ引く。肩甲骨を寄せながら引き、ゆっくり戻す。巻き肩改善にも有効。',formPoints:['肘を肩の高さで真後ろへ引く','肩をすくめず下げたまま','手は耳の横あたりまで引く','戻すときも力を抜かない'],caution:'肩を上げないよう肩甲骨を下げた状態を維持'},
+      {name:'グッドモーニング',target:'脊柱起立筋・ハムストリングス',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'12〜15回',rest:'60秒',description:'足を肩幅に開き両手を頭の後ろに添える。膝を少し曲げ、お尻を後ろに引きながら股関節から上体を前傾し、背中をまっすぐ保ったまま起き上がる。',formPoints:['背中は終始まっすぐ（丸めない）','動きは腰でなく股関節から','お尻を後ろへ突き出す','もも裏が伸びるのを感じる'],caution:'腰を丸めないことが最重要'},
+      {name:'ペンドレイロウ',target:'広背筋・僧帽筋中部',level:'中級',equipment:'ダンベル',time:'8分',sets:'4',reps:'8〜10回',rest:'90秒',description:'足を肩幅に開き上体を床と平行まで前傾。ダンベルを毎回床近くで静止させ、そこから一気に脇腹へ引き上げる。背中の厚みを作る。',formPoints:['毎回スタートで完全に静止する','前傾角度を最後まで保つ','肘を後上方へ引く','背中はフラットをキープ'],caution:'反動を最小限にし前傾を崩さない'},
+      {name:'チューブラットプルダウン',target:'広背筋（広がり）',level:'初級〜中級',equipment:'チューブ・ドア',time:'7分',sets:'3',reps:'12〜15回',rest:'60秒',description:'チューブをドアの最上部に固定し、両手で握って膝立ちまたは座位になる。肘を脇腹へ引き下げ、胸を張りながら背中で引く。懸垂の動きを自宅で再現できる。',formPoints:['肘を体側に向かって引き下げる','胸を張り肩甲骨を下げる','腕でなく背中の収縮を意識','戻すときゆっくり伸ばす'],caution:'固定部が外れないか確認する'},
+      {name:'ルネゲードロウ',target:'広背筋・体幹',level:'中級',equipment:'ダンベル',time:'7分',sets:'3',reps:'左右各8回',rest:'60秒',description:'ダンベルを握ってプランク姿勢を作り、片手ずつ脇腹へ引き上げる。背中と体幹を同時に鍛える複合種目。',formPoints:['腰がねじれないよう骨盤を水平に','脚幅を広げると安定する','引く側の肘を真後ろへ','体を一直線にキープ'],caution:'腰が回旋しないよう脚幅を広げて安定させる'},
+    ]
+  },
+  shoulder: {
+    summary:'肩（三角筋）は前部・中部・後部の3つに分かれ、腕を上げる・横に開く・後方に引くすべての動作に関与します。バランスよく鍛えることが重要です。',
+    exercises:[
+      {name:'パイクプッシュアップ',target:'三角筋前部・中部',level:'初級〜中級',equipment:'自重',time:'5分',sets:'3',reps:'8〜12回',rest:'60秒',description:'お尻を高く上げた逆V字姿勢で、頭を床に向けてプッシュアップ。肩への負荷が強まる。',caution:'手首に負担がかかるのでウォームアップを十分に'},
+      {name:'サイドレイズ（ダンベル）',target:'三角筋中部',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'12〜15回',rest:'45秒',description:'腕をわずかに曲げた状態で、肩の高さまで横に持ち上げる。小指側が上になるよう意識。',caution:'反動を使わず、ゆっくり下ろすことが重要'},
+      {name:'フロントレイズ',target:'三角筋前部',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'12回',rest:'45秒',description:'両腕を前方に肩の高さまで交互または同時に持ち上げる。肩関節の屈曲動作。',caution:'体を後ろに傾けた反動を使わない'},
+      {name:'リアレイズ（ダンベル）',target:'三角筋後部・菱形筋',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'15回',rest:'45秒',description:'前傾姿勢で両腕を後方に広げる。肩甲骨を寄せるよう意識し、三角筋後部に効かせる。',caution:'首・僧帽筋に力が入りすぎないよう注意'},
+      {name:'ショルダープレス（ダンベル）',target:'三角筋全体・上腕三頭筋',level:'中級',equipment:'ダンベル',time:'8分',sets:'4',reps:'10回',rest:'90秒',description:'ダンベルを耳の横に構え、真上に押し上げる。三角筋全体への複合種目。',caution:'腰が反らないよう腹圧をかける'},
+      {name:'アップライトロウ',target:'三角筋中部・僧帽筋',level:'中級',equipment:'ダンベル',time:'6分',sets:'3',reps:'12回',rest:'60秒',description:'ダンベルを体に近づけながら顎の高さまで引き上げる。肘が手首より常に高い位置にあるよう意識。',caution:'肩のインピンジメントに注意。痛みがあれば中止'},
+      {name:'アーノルドプレス',target:'三角筋前部・中部',level:'中級',equipment:'ダンベル',time:'8分',sets:'4',reps:'10回',rest:'90秒',description:'手のひらを自分に向けた位置から回外しながら頭上に押し上げる。三角筋を広い可動域で刺激する。',caution:'重量は通常のプレスより軽めに設定する'},
+      {name:'パイクプッシュアップ（足台）',target:'三角筋前部・中部',level:'中級',equipment:'椅子・台',time:'6分',sets:'3',reps:'8〜10回',rest:'90秒',description:'足を台に乗せて腰を高く上げ、頭頂を床に近づける。肩への負荷が大きい自重種目。',caution:'頭から落ちないよう手の位置を安定させる'},
+      {name:'壁逆立ちプッシュアップ',target:'三角筋全体・上腕三頭筋',level:'上級',equipment:'自重（壁）',time:'8分',sets:'3',reps:'5〜8回',rest:'120秒',description:'壁倒立の状態から頭を床に近づけて押し上げる。自重肩トレの最高峰。体重がそのまま負荷になる。',caution:'首・手首に負担。マットを敷き、必ず壁を使う'},
+      {name:'ラテラルレイズ21s',target:'三角筋中部（高強度）',level:'上級',equipment:'ダンベル',time:'7分',sets:'3',reps:'21回（7+7+7）',rest:'90秒',description:'下半分7回・上半分7回・フルレンジ7回を連続で行う。三角筋中部を限界まで追い込む。',caution:'軽い重量でフォームを崩さず行う'},
+    ]
+  },
+  bicep: {
+    summary:'上腕二頭筋は肘の屈曲と前腕の回外に関与します。様々な角度・グリップで刺激を与えることでピークを作れます。',
+    exercises:[
+      {name:'ダンベルカール',target:'上腕二頭筋',level:'初級',equipment:'ダンベル',time:'6分',sets:'3',reps:'10〜12回',rest:'60秒',description:'肘を体側に固定し、ダンベルを回外しながら持ち上げる。トップで1秒収縮を意識。',caution:'肘が前後に動く反動カールにならないよう注意'},
+      {name:'ハンマーカール',target:'上腕二頭筋長頭・腕橈骨筋',level:'初級',equipment:'ダンベル',time:'6分',sets:'3',reps:'12回',rest:'60秒',description:'親指を上に向けたニュートラルグリップのカール。二頭筋の外側と前腕に効く。',caution:'手首を曲げず中立位置で維持'},
+      {name:'コンセントレーションカール',target:'上腕二頭筋（ピーク）',level:'初級',equipment:'ダンベル・椅子',time:'5分',sets:'3',reps:'12回（片側）',rest:'45秒',description:'座って肘を太ももの内側に固定し、片腕ずつゆっくりカール。上腕二頭筋のピーク形成に最適。',caution:'肘が動かないよう太ももにしっかり固定する'},
+      {name:'インクラインカール',target:'上腕二頭筋長頭ストレッチ',level:'中級',equipment:'ダンベル・インクラインベンチ',time:'6分',sets:'3',reps:'10回',rest:'60秒',description:'斜め後ろに傾けたベンチに寄りかかり、腕を後方に伸ばした状態からカール。長頭が完全ストレッチされる。',caution:'肩関節への負担が大きいため軽い重量から始める'},
+      {name:'チューブカール',target:'上腕二頭筋',level:'初級',equipment:'チューブ',time:'6分',sets:'3',reps:'15〜20回',rest:'45秒',description:'チューブの中央を両足で踏み、両端を握って手のひらを上に向ける。肘を体側に固定し、チューブを巻き上げるようにカールする。懸垂が難しい自宅でも二頭筋を強く刺激できる。',formPoints:['肘を体の横に固定して動かさない','手のひらを上に向けて巻き上げる','トップで1秒キュッと収縮','戻すときも張力を抜かずゆっくり'],caution:'チューブが足から外れないよう確認'},
+      {name:'タオルカール（等尺性）',target:'上腕二頭筋',level:'初級',equipment:'タオル',time:'5分',sets:'3',reps:'10秒×8回',rest:'45秒',description:'タオルの両端を片足で踏み、もう一方の手で握ってカールの姿勢を作る。足で踏ん張って抵抗を作り、上げきった位置で力を入れ続ける。器具なしで二頭筋を鍛えられる。',formPoints:['肘を固定し前腕だけ動かす','足の踏み込みで負荷を調整','力を入れる間も呼吸は止めない','左右均等に行う'],caution:'手首をひねりすぎない'},
+      {name:'インクラインダンベルカール',target:'上腕二頭筋長頭ストレッチ',level:'中級',equipment:'ダンベル・椅子',time:'6分',sets:'3',reps:'10回',rest:'60秒',description:'背もたれを倒した椅子に寄りかかり腕を体の後方に垂らす。その位置からダンベルをカールする。長頭が完全に伸ばされ強い刺激が入る。',formPoints:['腕は体より後ろに垂らしたまま','肩を動かさず肘から下だけ曲げる','下ろしきって長頭を伸ばす','反動を使わない'],caution:'肩に負担がかかるため軽い重量から'},
+      {name:'スパイダーカール',target:'上腕二頭筋（短頭ピーク）',level:'中級',equipment:'ダンベル・椅子',time:'6分',sets:'3',reps:'10〜12回',rest:'60秒',description:'椅子の背もたれに胸をあててうつ伏せ気味になり、腕を真下に垂らしてカールする。反動を排除し短頭を集中的に刺激する。',formPoints:['腕は床に垂直に垂らす','肘を前後に動かさない','トップで強く収縮させる','ゆっくり下ろす'],caution:'前腕だけで挙上する'},
+      {name:'21カール',target:'上腕二頭筋（高強度）',level:'中級',equipment:'ダンベル',time:'6分',sets:'3',reps:'21回（7+7+7）',rest:'90秒',description:'下半分だけ7回→上半分だけ7回→フルレンジ7回を連続で行う。可動域を分割して二頭筋を限界まで追い込む高強度テクニック。',formPoints:['各パートで肘を固定する','部分動作も丁寧に止める','軽い重量で行う','最後まで反動を使わない'],caution:'軽めの重量でフォーム維持を優先'},
+      {name:'タオル斜め懸垂（テーブル）',target:'上腕二頭筋・広背筋',level:'中級',equipment:'頑丈なテーブル・タオル',time:'7分',sets:'3',reps:'10〜12回',rest:'75秒',description:'頑丈なテーブルの縁を逆手（手のひら上向き）で握り、体を斜めにして引き上げる。逆手にすることで二頭筋に強く効く、懸垂の自宅代替種目。',formPoints:['逆手で握り肘を曲げて引く','胸を縁に近づける','体は一直線をキープ','膝を伸ばすほど高負荷'],caution:'テーブルが頑丈か必ず確認する'},
+    ]
+  },
+  tricep: {
+    summary:'上腕三頭筋は腕の後面を占める大きな筋肉で、肘を伸ばすすべての動作に関与します。押す系種目と単関節種目を組み合わせましょう。',
+    exercises:[
+      {name:'ナロープッシュアップ',target:'上腕三頭筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'12〜15回',rest:'60秒',description:'手幅を肩幅より狭くして行うプッシュアップ。肘を体に沿って後方に引きながら曲げる。',caution:'手首への負担に注意。痛みがある場合はグリップを使用'},
+      {name:'ディップス',target:'上腕三頭筋・大胸筋下部',level:'中級',equipment:'椅子・台',time:'6分',sets:'3',reps:'10〜15回',rest:'60秒',description:'椅子2脚または台を使って両手で体を支え、肘を後方に折りながら体を下げる。',caution:'肩の前傾を最小限に。肩に痛みがある場合は禁忌'},
+      {name:'オーバーヘッドエクステンション（ダンベル）',target:'上腕三頭筋長頭',level:'初級',equipment:'ダンベル',time:'6分',sets:'3',reps:'12回',rest:'60秒',description:'ダンベルを頭上に持ち、肘だけを動かして後頭部に向けて下げ、再び持ち上げる。長頭のストレッチが強い。',caution:'肘が外に開かないよう内側に寄せたまま動作する'},
+      {name:'キックバック',target:'上腕三頭筋全体',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'12〜15回（片側）',rest:'45秒',description:'前傾して肘を体側90度に固定し、腕を後方に伸ばす。肘から先だけを動かす孤立種目。',caution:'体を揺らす反動を使わない'},
+      {name:'トライセップスプッシュダウン（チューブ）',target:'上腕三頭筋',level:'初級',equipment:'チューブ',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'チューブを頭上に固定し、肘を曲げた状態から腕を下に伸ばす。高回数でのパンプに最適。',caution:'肘の位置を動かさないことが最重要'},
+      {name:'ベンチディップス（足台）',target:'上腕三頭筋・大胸筋下部',level:'中級',equipment:'椅子2脚',time:'6分',sets:'3',reps:'12〜15回',rest:'60秒',description:'手と足をそれぞれ別の椅子に置き、体を深く沈める。可動域が広がり三頭筋への負荷が増す。',caution:'肩が前に出すぎないよう胸を張る'},
+      {name:'JMプレス（ダンベル）',target:'上腕三頭筋（複合）',level:'中級',equipment:'ダンベル・ベンチ',time:'8分',sets:'4',reps:'10回',rest:'90秒',description:'ナロープレスとスカルクラッシャーの中間動作。三頭筋に高重量を扱える複合種目。',caution:'肘を顔に近づけすぎない'},
+      {name:'リングディップス',target:'上腕三頭筋・大胸筋',level:'上級',equipment:'吊り輪',time:'8分',sets:'3',reps:'6〜10回',rest:'90秒',description:'不安定な吊り輪で行うディップス。三頭筋と安定筋を同時に極限まで使う上級種目。',caution:'肩に強い負担。十分な筋力がついてから挑戦'},
+    ]
+  },
+  abs: {
+    summary:'腹筋群（腹直筋・腹斜筋・腹横筋）は体幹の安定・脊柱の屈曲・回旋に関わります。6種目をサーキット形式で行うと効率的です。',
+    exercises:[
+      {name:'クランチ',target:'腹直筋上部',level:'初級',equipment:'自重',time:'4分',sets:'3',reps:'20〜30回',rest:'30秒',description:'仰向けで膝を立て、肩甲骨が床から離れるところまで上体を丸める。腰は床につけたまま。',caution:'首を引っ張らず、腹筋の力だけで起き上がる'},
+      {name:'レッグレイズ',target:'腹直筋下部',level:'初級〜中級',equipment:'自重',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'仰向けで手を腰の下に当て、両足を90度まで上げてゆっくり下ろす。腰が反らないよう注意。',caution:'腰が床から浮かないようにする'},
+      {name:'プランク',target:'腹横筋・体幹全体',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'30〜60秒',rest:'30秒',description:'肘をついた状態で体を一直線に保つ。腹圧をかけ続けることが重要。',caution:'お尻が上がったり腰が沈んだりしないよう鏡で確認'},
+      {name:'サイドプランク',target:'腹斜筋・体幹外側',level:'初級〜中級',equipment:'自重',time:'5分',sets:'3',reps:'20〜30秒（両側）',rest:'30秒',description:'横向きで肘と足の外側で体を支え、体を一直線に保つ。腹斜筋と腰方形筋に効く。',caution:'腰が下がらないよう常に持ち上げておく'},
+      {name:'バイシクルクランチ',target:'腹直筋・腹斜筋',level:'初級〜中級',equipment:'自重',time:'4分',sets:'3',reps:'左右各15回',rest:'30秒',description:'仰向けで交互に肘と膝を近づける動作。腹斜筋の回旋動作が入る総合腹筋種目。',caution:'首の後ろで手を組まず、頭の後ろに軽く添える程度に'},
+      {name:'ドローイン（腹横筋トレーニング）',target:'腹横筋・インナーマッスル',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'10秒×10回',rest:'30秒',description:'息を吐きながらおへそを背骨に向けて引き込み、10秒キープ。体幹安定の基礎種目。',caution:'息を止めずに自然呼吸を続ける'},
+      {name:'リバースクランチ',target:'腹直筋下部・腸腰筋',level:'中級',equipment:'自重',time:'6分',sets:'3',reps:'15〜20回',rest:'45秒',description:'仰向けで膝を90度に曲げ、お尻を丸めながら膝を胸へ引き寄せて骨盤を持ち上げる。床でできるハンギングニーレイズの代替で下腹部に効く。',formPoints:['脚でなく腹筋で骨盤を巻き上げる','反動で勢いをつけない','下ろすとき腰を反らせない','手は床に置いて支える'],caution:'首や肩に力を入れず腹筋で動かす'},
+      {name:'Vシットアップ',target:'腹直筋全体',level:'中級',equipment:'自重',time:'5分',sets:'3',reps:'12〜15回',rest:'45秒',description:'仰向けから上体と脚を同時に持ち上げV字を作る。腹直筋上下を同時に強く収縮させる。',caution:'腰に痛みが出る場合は膝を曲げて行う'},
+      {name:'レッグレイズ（フロア・高強度）',target:'腹直筋下部（高強度）',level:'上級',equipment:'自重',time:'7分',sets:'3',reps:'12〜15回',rest:'60秒',description:'仰向けで脚を伸ばし、床ギリギリまで下ろしてから垂直まで上げる。手は腰の下。下ろすのを限界までゆっくり行い高強度化する。バー不要の自宅向け強化版。',formPoints:['腰を常に床に押し付ける','脚は伸ばしたまま','下ろす局面を3〜4秒かける','腰が浮く手前で止める'],caution:'腰が反って浮く場合は可動域を狭める'},
+      {name:'ドラゴンフラッグ',target:'腹直筋全体・体幹',level:'上級',equipment:'ベンチ',time:'8分',sets:'3',reps:'5〜8回',rest:'120秒',description:'ベンチを掴んで体を一直線に持ち上げ、ゆっくり下ろす。ブルース・リーが行った最強クラスの腹筋種目。',caution:'首・腰に負担。十分な体幹筋力がついてから'},
+    ]
+  },
+  glute: {
+    summary:'大臀筋・中臀筋は股関節伸展・外転に関与し、腰痛予防・姿勢改善にも直結します。スクワット系と単関節種目を組み合わせましょう。',
+    exercises:[
+      {name:'スクワット',target:'大臀筋・大腿四頭筋',level:'初級',equipment:'自重',time:'6分',sets:'4',reps:'15〜20回',rest:'60秒',description:'足を肩幅に開き、膝がつま先方向に向くよう意識して股関節から曲げて下りる。深く座るほど臀筋への刺激が増す。',caution:'膝が内側に入るニーインに注意'},
+      {name:'ヒップスラスト',target:'大臀筋',level:'初級',equipment:'自重・ベンチ',time:'6分',sets:'3',reps:'15〜20回',rest:'60秒',description:'肩甲骨をベンチに乗せ、足を床につけて腰を持ち上げる。トップで臀筋をしっかり収縮させる。',caution:'腰を反らしすぎず、骨盤を後傾させてトップで止める'},
+      {name:'グルートブリッジ',target:'大臀筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'20回',rest:'45秒',description:'仰向けで膝を立て、腰を持ち上げてトップで2秒キープ。ヒップスラストの入門種目。',caution:'腰が伸びすぎないよう、お腹を軽く引き込みながら行う'},
+      {name:'ブルガリアンスプリットスクワット',target:'大臀筋・大腿四頭筋（片脚）',level:'中級',equipment:'自重・椅子',time:'8分',sets:'3',reps:'10〜12回（片側）',rest:'60秒',description:'片足を後ろの椅子に乗せ、前足一本でスクワット。片脚なので臀筋への刺激が強い。',caution:'前膝がつま先より大きく前に出ないよう胴体を起こす'},
+      {name:'クラムシェル',target:'中臀筋・梨状筋',level:'初級',equipment:'自重・チューブ',time:'5分',sets:'3',reps:'15〜20回（両側）',rest:'30秒',description:'横向きで膝を曲げて重ねた状態から、上の膝を蛤のように開く。股関節外転・外旋の孤立種目。',caution:'骨盤が後傾しないよう腰を固定したまま脚だけ動かす'},
+      {name:'ドンキーキック',target:'大臀筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'15回（片側）',rest:'30秒',description:'四つん這いで膝を90度に曲げたまま足を天井に向けて蹴り上げる。臀筋の収縮を最大にする。',caution:'腰が反らないよう体幹を固めて行う'},
+      {name:'バーベルヒップスラスト',target:'大臀筋（高重量）',level:'中級',equipment:'バーベル・ベンチ',time:'8分',sets:'4',reps:'8〜12回',rest:'90秒',description:'肩甲骨をベンチに乗せ骨盤上にバーベルを置いて突き上げる。臀筋に最も高重量を扱える種目。',caution:'パッドを使い恥骨を保護。トップで腰を反りすぎない'},
+      {name:'シングルレッグヒップスラスト',target:'大臀筋（片脚）',level:'中級',equipment:'ベンチ',time:'7分',sets:'3',reps:'10〜12回（片側）',rest:'60秒',description:'片脚だけでヒップスラストを行う。左右差の改善と高い臀筋刺激を両立する。',caution:'骨盤が傾かないよう水平を保つ'},
+      {name:'ピストルスクワット',target:'大臀筋・大腿四頭筋（片脚）',level:'上級',equipment:'自重',time:'8分',sets:'3',reps:'左右各5〜8回',rest:'90秒',description:'片脚を前に伸ばして反対の脚だけでしゃがみ立ち上がる。臀筋・脚・バランスを総合的に鍛える自重上級種目。',caution:'最初は支柱に掴まり補助しながら行う'},
+      {name:'ウォーキングランジ（ダンベル）',target:'大臀筋・大腿四頭筋',level:'中級',equipment:'ダンベル',time:'8分',sets:'3',reps:'左右各12歩',rest:'90秒',description:'ダンベルを両手に持ち大きく踏み出して進む。臀筋へのストレッチ負荷が高い。',caution:'前膝がつま先より大きく前へ出ないようにする'},
+    ]
+  },
+  quad: {
+    summary:'大腿四頭筋は膝の伸展と日常動作（立つ・歩く・階段）に不可欠な筋群です。スクワット系とランジ系を組み合わせて鍛えましょう。',
+    exercises:[
+      {name:'スクワット',target:'大腿四頭筋・大臀筋',level:'初級',equipment:'自重',time:'6分',sets:'4',reps:'15〜20回',rest:'60秒',description:'足を肩幅に開き、膝がつま先方向に向くよう意識して下りる。太もも平行以下まで深く下りると四頭筋への刺激が増す。',caution:'膝が内側に入るニーインに注意'},
+      {name:'ウォーキングランジ',target:'大腿四頭筋・大臀筋',level:'初級〜中級',equipment:'自重',time:'6分',sets:'3',reps:'左右各12歩',rest:'60秒',description:'大きく踏み出して前膝が90度になるようにして下り、次の足を前に出す。歩きながら連続して行う。',caution:'前膝がつま先より前に出すぎないよう体を垂直に保つ'},
+      {name:'シッシースクワット',target:'大腿四頭筋（膝関節周囲）',level:'中級',equipment:'自重',time:'5分',sets:'3',reps:'10〜15回',rest:'60秒',description:'かかとを上げながら膝を前方に出しつつ体を後傾させる。四頭筋のみを強烈に鍛える孤立種目。',caution:'膝に既往症がある場合は禁忌。痛みがあれば即中止'},
+      {name:'レッグエクステンション（椅子）',target:'大腿四頭筋',level:'初級',equipment:'自重・椅子',time:'5分',sets:'3',reps:'15〜20回（片側）',rest:'45秒',description:'椅子に座り、片脚を水平になるまで伸ばして2秒キープ。四頭筋を等張性収縮で鍛える。',caution:'勢いよく蹴り上げず、ゆっくりコントロールする'},
+      {name:'ステップアップ',target:'大腿四頭筋・大臀筋',level:'初級',equipment:'椅子・台',time:'6分',sets:'3',reps:'12回（片側）',rest:'60秒',description:'台に片足を乗せて体重を前脚に乗せながら立ち上がる。日常動作（階段）に近い機能的な種目。',caution:'台が安定していることを確認してから行う'},
+      {name:'ゴブレットスクワット',target:'大腿四頭筋・大臀筋',level:'中級',equipment:'ダンベル',time:'7分',sets:'4',reps:'12〜15回',rest:'75秒',description:'ダンベルを胸の前で縦に抱え深くしゃがむ。フォームを保ちやすく高重量化への入門に最適。',caution:'かかとを浮かせず、胸を張って下りる'},
+      {name:'ジャンプスクワット',target:'大腿四頭筋・瞬発力',level:'中級',equipment:'自重',time:'6分',sets:'4',reps:'12〜15回',rest:'60秒',description:'スクワットの立ち上がりで爆発的にジャンプする。速筋と心肺機能を同時に鍛える。',caution:'着地は膝を柔らかく使い衝撃を吸収する'},
+      {name:'ピストルスクワット',target:'大腿四頭筋・臀筋（片脚）',level:'上級',equipment:'自重',time:'8分',sets:'3',reps:'左右各5〜8回',rest:'90秒',description:'片脚だけで深くしゃがみ立ち上がる。脚の筋力・柔軟性・バランスをすべて要求する自重最高難度種目。',caution:'膝に痛みがあれば中止。最初は補助ありで'},
+      {name:'シシースクワット（高強度）',target:'大腿四頭筋（膝周囲）',level:'上級',equipment:'自重',time:'6分',sets:'3',reps:'10〜12回',rest:'90秒',description:'かかとを上げ膝を前方へ送りながら体を深く後傾。四頭筋だけに極端な負荷を集中させる。',caution:'膝への負担が大きい。既往症がある場合は避ける'},
+    ]
+  },
+  hamstring: {
+    summary:'ハムストリングス（大腿二頭筋・半膜様筋・半腱様筋）は膝の屈曲と股関節の伸展に関わります。スクワットだけでは不十分で、専用種目が必要です。',
+    exercises:[
+      {name:'スティッフレッグドデッドリフト',target:'ハムストリングス・臀筋',level:'中級',equipment:'ダンベル',time:'8分',sets:'3',reps:'10〜12回',rest:'60秒',description:'膝をほぼ伸ばした状態で前傾し、ダンベルを脚に沿って下ろす。ハムストリングスの強いストレッチが得られる。',caution:'背中を丸めず、股関節から前傾することが最重要'},
+      {name:'グッドモーニング',target:'ハムストリングス・脊柱起立筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'12〜15回',rest:'60秒',description:'足を肩幅に開き、膝をわずかに曲げた状態で股関節から前傾して戻る。',caution:'腰を丸めないこと'},
+      {name:'ヒップヒンジ（練習）',target:'ハムストリングス・臀筋・体幹',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'15回',rest:'30秒',description:'股関節を蝶番のように後ろに引く基本動作の練習。デッドリフトやRDLの準備運動としても重要。',caution:'背中がまっすぐであることを鏡で確認'},
+      {name:'ノルディックカール',target:'ハムストリングス（エキセントリック）',level:'上級',equipment:'自重・固定できる台',time:'8分',sets:'3',reps:'5〜8回',rest:'90秒',description:'足首を固定して膝立ちから前方に倒れ、ハムストリングスで耐えながらゆっくり前傾する。非常に強い負荷。',caution:'初心者は手で床をついて補助しながら行う'},
+      {name:'ライイングレッグカール（チューブ）',target:'ハムストリングス',level:'初級',equipment:'チューブ',time:'6分',sets:'3',reps:'12〜15回',rest:'45秒',description:'うつ伏せでチューブを足首に固定し、膝を曲げる。ハムストリングスの孤立種目として有効。',caution:'骨盤が浮かないよう腹圧を維持する'},
+      {name:'ルーマニアンデッドリフト',target:'ハムストリングス・臀筋',level:'中級',equipment:'ダンベル',time:'8分',sets:'4',reps:'10〜12回',rest:'90秒',description:'膝をわずかに曲げたまま股関節を後ろに引き、ダンベルを脛に沿って下ろす。ハムへの最重要種目。',caution:'背中は終始フラット。腰を丸めない'},
+      {name:'スライダーレッグカール',target:'ハムストリングス（自重）',level:'中級',equipment:'タオル・布',time:'6分',sets:'3',reps:'10〜12回',rest:'60秒',description:'仰向けで腰を上げ、かかとの下に滑る布を置いて脚を伸縮させる。自重でハムを強く刺激できる。',caution:'腰が落ちないようブリッジを維持する'},
+      {name:'ノルディックカール',target:'ハムストリングス（エキセントリック）',level:'上級',equipment:'自重・固定できる台',time:'8分',sets:'3',reps:'5〜8回',rest:'90秒',description:'足首を固定して膝立ちから前方に倒れ、ハムストリングスで耐えながらゆっくり前傾する。非常に強い負荷。',caution:'初心者は手で床をついて補助しながら行う'},
+      {name:'シングルレッグRDL',target:'ハムストリングス・バランス',level:'上級',equipment:'ダンベル',time:'8分',sets:'3',reps:'左右各8〜10回',rest:'75秒',description:'片脚立ちで股関節から前傾し、もう一方の脚を後方に伸ばす。ハムと安定性を同時に鍛える。',caution:'軸足の膝をロックせず、ふらつく場合は壁に手を添える'},
+    ]
+  },
+  calf: {
+    summary:'腓腹筋・ヒラメ筋からなるふくらはぎは、歩行・ジャンプ・下半身の血液循環に重要です。高回数・多セットが効果的です。',
+    exercises:[
+      {name:'スタンディングカーフレイズ',target:'腓腹筋',level:'初級',equipment:'自重・段差',time:'5分',sets:'4',reps:'20〜30回',rest:'45秒',description:'かかとを段差の端からはみ出して立ち、限界まで上げて限界まで下げる。可動域全体を使う。',caution:'反動を使わず、ゆっくり下ろすフェーズが重要'},
+      {name:'シーテッドカーフレイズ',target:'ヒラメ筋',level:'初級',equipment:'ダンベル・椅子',time:'5分',sets:'3',reps:'20〜25回',rest:'45秒',description:'椅子に座り膝の上にダンベルを乗せてカーフレイズ。膝を曲げた状態で行うためヒラメ筋が優位になる。',caution:'重いダンベルを使う場合は膝への圧迫に注意'},
+      {name:'シングルレッグカーフレイズ',target:'腓腹筋（片脚）',level:'中級',equipment:'自重・段差',time:'6分',sets:'3',reps:'15〜20回（片側）',rest:'45秒',description:'片脚で立ちカーフレイズを行う。両脚より負荷が大きく、バランス能力も向上する。',caution:'バランスを崩しやすいため壁に片手をついて行う'},
+      {name:'ジャンプロープ（縄跳び）',target:'腓腹筋・全身',level:'初級〜中級',equipment:'縄跳び',time:'10分',sets:'3',reps:'1〜2分',rest:'60秒',description:'通常の縄跳びでふくらはぎの持久力と瞬発力を鍛える。有酸素効果もあり総合的に優れた種目。',caution:'着地はかかとをつかず前足部で行い、膝への衝撃を軽減'},
+      {name:'つま先歩き',target:'腓腹筋・ヒラメ筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'30秒',rest:'30秒',description:'かかとを完全に浮かせてつま先だけで歩く。継続的な等張性収縮でふくらはぎに血流を促す。',caution:'バランスが崩れないよう目線を前方に固定'},
+      {name:'ダンベルカーフレイズ（片脚）',target:'腓腹筋（高負荷）',level:'中級',equipment:'ダンベル・段差',time:'7分',sets:'4',reps:'12〜15回（片側）',rest:'60秒',description:'片手にダンベルを持ち片脚で段差からカーフレイズ。可動域いっぱいに上下し腓腹筋を強く刺激。',caution:'壁や柱に手を添えバランスを取る'},
+      {name:'ジャンプロープ（ダブルアンダー）',target:'腓腹筋・瞬発力',level:'上級',equipment:'縄跳び',time:'8分',sets:'4',reps:'30〜60秒',rest:'60秒',description:'一回のジャンプで縄を2回回す高強度縄跳び。ふくらはぎの瞬発力と持久力を極限まで鍛える。',caution:'前足部で着地し、十分なウォームアップを行う'},
+      {name:'ボックスジャンプ',target:'腓腹筋・下半身パワー',level:'上級',equipment:'頑丈な台',time:'8分',sets:'4',reps:'8〜10回',rest:'90秒',description:'安定した台へ両足で跳び乗る。下半身全体の爆発力とふくらはぎのバネを養う。',caution:'台は必ず安定したものを。着地は静かに膝を曲げて'},
+    ]
+  },
+  trap: {
+    summary:'僧帽筋上部は首と肩をつなぐ筋肉で、頭を支える働きがあります。過度に発達させず、中下部とのバランスを意識しましょう。',
+    exercises:[
+      {name:'シュラッグ（ダンベル）',target:'僧帽筋上部',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'12〜15回',rest:'60秒',description:'ダンベルを両手に持ち、肩をすくめるように真上に引き上げる。トップで1秒収縮。',caution:'首を縮めず、純粋に肩を上げ下げする動作に集中'},
+      {name:'アップライトロウ',target:'僧帽筋・三角筋中部',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'12回',rest:'60秒',description:'ダンベルを体前面に持ち、顎の高さまで肘を高く引き上げる。',caution:'肩のインピンジメントに注意。痛みがあれば中止'},
+      {name:'フェイスプル',target:'僧帽筋中部・三角筋後部',level:'初級',equipment:'チューブ',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'チューブを顔の高さに固定し、両手を耳横に引き付ける。僧帽筋中下部の強化と姿勢改善に効果的。',caution:'首に力が入りすぎないよう肩を下げた状態を維持'},
+      {name:'ネックエクステンション',target:'頭板状筋・僧帽筋上部',level:'初級',equipment:'自重',time:'4分',sets:'3',reps:'15回',rest:'30秒',description:'ゆっくり首を後ろに倒し、元に戻す。頚部の筋肉強化。',caution:'急激な動作や過度な後屈は頚椎に負担をかける。ゆっくり行う'},
+      {name:'ファーマーズウォーク',target:'僧帽筋・前腕・体幹',level:'中級',equipment:'ダンベル',time:'7分',sets:'4',reps:'30〜40m',rest:'90秒',description:'重いダンベルを両手に持ち姿勢を保って歩く。僧帽筋と握力、全身の安定性を同時に鍛える。',caution:'肩をすくめず背筋を伸ばして歩く'},
+      {name:'バーベルシュラッグ（高重量）',target:'僧帽筋上部',level:'中級',equipment:'バーベル',time:'6分',sets:'4',reps:'10〜12回',rest:'75秒',description:'バーベルを持ち肩を最大限すくめてトップで2秒静止。僧帽筋上部に高重量を扱える。',caution:'首を回旋させず真上に上げ下げする'},
+    ]
+  },
+  core: {
+    summary:'体幹（コア）はすべての運動の基盤です。インナーマッスル（腹横筋・多裂筋）からアウターマッスルまで段階的にアプローチします。',
+    exercises:[
+      {name:'ドローイン',target:'腹横筋（インナーマッスル）',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'10秒×10回',rest:'30秒',description:'息を吐ききったあとおへそを背骨に向けて引き込み10秒キープ。体幹安定の最基礎種目。',caution:'息を止めず自然呼吸で行う'},
+      {name:'プランク',target:'腹横筋・脊柱起立筋・大臀筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'30〜60秒',rest:'30秒',description:'肘をついた前傾支持で体を一直線に保つ。全体幹の等尺性収縮。',caution:'腰が下がったり上がったりしないよう鏡で確認'},
+      {name:'デッドバグ',target:'腹横筋・腸腰筋',level:'初級〜中級',equipment:'自重',time:'6分',sets:'3',reps:'左右各8〜10回',rest:'45秒',description:'仰向けで腕と反対側の脚を同時に伸ばす。腰を床に押し付けながら行うのが重要。',caution:'腰が床から離れた瞬間に止めてリセット'},
+      {name:'バードドッグ',target:'多裂筋・臀筋・腹横筋',level:'初級',equipment:'自重',time:'5分',sets:'3',reps:'左右各10回',rest:'30秒',description:'四つん這いで対角線上の手と足を同時に伸ばして3秒キープ。体幹の協調性訓練。',caution:'腰が回旋しないよう骨盤を水平に保つ'},
+      {name:'サイドプランク',target:'腹斜筋・腰方形筋',level:'初級〜中級',equipment:'自重',time:'5分',sets:'3',reps:'20〜30秒（両側）',rest:'30秒',description:'横向き肘支持で体を一直線に保つ。側面の体幹を強化。',caution:'腰が下がらないよう持ち上げ続ける'},
+      {name:'ハローエクササイズ（チューブ）',target:'体幹回旋筋・肩周囲筋',level:'初級〜中級',equipment:'チューブ',time:'6分',sets:'3',reps:'左右各10回',rest:'45秒',description:'チューブを前方に引っ張りながら頭上を大きく円を描くように動かす。体幹の三次元的安定を鍛える。',caution:'腰が過度に回旋しないよう骨盤を固定する'},
+      {name:'パロフプレス（チューブ）',target:'腹斜筋・抗回旋',level:'中級',equipment:'チューブ',time:'6分',sets:'3',reps:'左右各12回',rest:'45秒',description:'横からのチューブの張力に抗って胸の前から前方へ押し出す。体幹の抗回旋能力を鍛える機能的種目。',caution:'体がチューブ側に引っ張られないよう踏ん張る'},
+      {name:'アブローラー（膝コロ）',target:'腹直筋・腹横筋・体幹全体',level:'中級',equipment:'アブローラー',time:'6分',sets:'3',reps:'10〜12回',rest:'60秒',description:'膝立ちでローラーを前方へ転がし、限界で引き戻す。体幹全体に強烈な負荷がかかる。',caution:'腰が反らないよう常に腹圧をかける'},
+      {name:'ライイングウィンドシールドワイパー',target:'腹斜筋・腹直筋（高強度）',level:'上級',equipment:'自重',time:'7分',sets:'3',reps:'左右各8〜10回',rest:'75秒',description:'仰向けで両手を横に広げ、脚を揃えて垂直に上げる。脚を左右にゆっくり倒し、床手前で戻す。床で行うワイパーで腹斜筋に強く効く。',formPoints:['肩を床につけたまま倒す','脚を揃えてコントロール','腹斜筋で戻す意識','倒しすぎず床手前で止める'],caution:'腰をひねりすぎないよう可動域を管理'},
+      {name:'立ちコロ（アブローラー）',target:'体幹全体（最高強度）',level:'上級',equipment:'アブローラー',time:'7分',sets:'3',reps:'5〜8回',rest:'120秒',description:'立った状態からローラーを伸ばし全身を支える。体幹自重トレの到達点とされる種目。',caution:'十分な体幹筋力がないと腰を痛める。膝コロを習得してから'},
+    ]
+  },
+  forearm: {
+    summary:'前腕は手首の屈伸・回内回外・握力に関わる多数の小さな筋肉群です。日常動作・スポーツ・他種目のグリップ強化に直結します。高回数で鍛えると効果的です。',
+    exercises:[
+      {name:'リストカール',target:'前腕屈筋群',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'膝の上に前腕を乗せ手のひらを上にし、手首だけを丸めるように巻き上げる。前腕内側を鍛える。',caution:'重量は軽めから。手首を痛めないよう可動域を制御'},
+      {name:'リバースリストカール',target:'前腕伸筋群',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'手の甲を上にして手首を持ち上げる。屈筋とのバランスを取り、テニス肘予防にも有効。',caution:'痛みが出る場合はチューブに変更'},
+      {name:'ハンマーカール',target:'腕橈骨筋・前腕',level:'初級',equipment:'ダンベル',time:'6分',sets:'3',reps:'12回',rest:'60秒',description:'親指を上に向けたニュートラルグリップでカール。前腕上部と腕橈骨筋に効く。',caution:'手首を曲げず中立位を保つ'},
+      {name:'リストローラー',target:'前腕屈筋・伸筋全体',level:'中級',equipment:'リストローラー・ダンベル',time:'6分',sets:'3',reps:'巻き上げ3往復',rest:'60秒',description:'棒に紐で吊るした重りを手首の回転だけで巻き上げ・巻き下げる。前腕全体を一度に追い込む。',caution:'肩の高さで腕を伸ばし続けるため軽い重量から'},
+      {name:'プレートピンチ',target:'母指内転筋・握力（つまむ力）',level:'中級',equipment:'プレート',time:'5分',sets:'3',reps:'20〜30秒保持',rest:'60秒',description:'プレートを指先でつまんで保持する。日常で不足しがちなピンチ力を強化する。',caution:'落下に注意し足元に物を置かない'},
+      {name:'リバースカール（バー）',target:'前腕伸筋・腕橈骨筋',level:'中級',equipment:'バー・ダンベル',time:'6分',sets:'3',reps:'10〜12回',rest:'60秒',description:'順手（手の甲が前）でバーをカールする。前腕の太さと伸筋を強化する。',caution:'反動を使わずゆっくり挙上'},
+    ]
+  },
+  hand: {
+    summary:'手・指の筋肉（手内筋・指屈筋）は握力・巧緻性・日常のあらゆる動作の基盤です。握る力だけでなく開く力・指の独立性もバランスよく鍛えましょう。',
+    exercises:[
+      {name:'グリッパー握り込み',target:'指屈筋群・握力（クラッシュ力）',level:'初級',equipment:'ハンドグリッパー',time:'4分',sets:'3',reps:'15〜20回',rest:'45秒',description:'グリッパーを最後まで握り込み、ゆっくり開く。握力の基本「クラッシュ力」を鍛える。',caution:'腱鞘炎の急性期は行わない'},
+      {name:'タオル絞り',target:'指屈筋・前腕',level:'初級',equipment:'タオル',time:'4分',sets:'3',reps:'左右各10回',rest:'30秒',description:'濡れタオルを両手で逆方向に絞る動作。握力と回内回外を同時に鍛える手軽な種目。',caution:'手首をひねりすぎない'},
+      {name:'ラバーバンド指開き',target:'指伸筋（開く力）',level:'初級',equipment:'輪ゴム・専用バンド',time:'4分',sets:'3',reps:'20回',rest:'30秒',description:'指に輪ゴムをかけ、外側に開く動作を繰り返す。握る筋肉と拮抗する伸筋を鍛えバランスを整える。',caution:'急に強く開かず徐々に負荷を上げる'},
+      {name:'フィンガープッシュアップ（壁）',target:'指屈筋・手内筋',level:'中級',equipment:'壁',time:'5分',sets:'3',reps:'10〜15回',rest:'45秒',description:'壁に指先だけをつけてプッシュアップ。指の腹で体重を支え、指の筋力と腱を強化する。',caution:'指に痛みが出たら即中止。床での実施は上級者のみ'},
+      {name:'米びつ握り（ライスバケツ）',target:'手指・前腕全体',level:'中級',equipment:'米・バケツ',time:'5分',sets:'3',reps:'各動作30秒',rest:'45秒',description:'米を入れた容器に手を入れ、握る・開く・回すを行う。指のあらゆる動きを総合的に鍛える。',caution:'手に傷がある場合は避ける'},
+      {name:'指タッピング',target:'手内筋・指の巧緻性',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'各指10回',rest:'なし',description:'親指と他の4指を順番に素早くタッチする。指の独立性と細かい動きの神経制御を高める。',caution:'特になし。デスクでの合間にも最適'},
+    ]
+  },
+  oblique: {
+    summary:'横腹（腹斜筋・腹横筋）は体をひねる・横に曲げる・体幹を安定させる動作に関わります。くびれ作りと回旋パワーの両面で重要です。',
+    exercises:[
+      {name:'サイドベンド（ダンベル）',target:'腹斜筋（外側）',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'左右各15回',rest:'45秒',description:'片手にダンベルを持ち体を横に倒し、反対側の腹斜筋で起こす。横腹を直接刺激する。',caution:'前後に傾かず純粋な側屈のみ。重量は片側だけにしない'},
+      {name:'バイシクルクランチ',target:'腹斜筋・腹直筋',level:'初級〜中級',equipment:'自重',time:'4分',sets:'3',reps:'左右各15回',rest:'30秒',description:'仰向けで対角の肘と膝を近づける。回旋動作で腹斜筋を強く使う総合種目。',caution:'首を引っ張らず、頭の後ろに軽く手を添える'},
+      {name:'サイドプランク',target:'腹斜筋・腰方形筋',level:'初級〜中級',equipment:'自重',time:'5分',sets:'3',reps:'20〜40秒（両側）',rest:'30秒',description:'横向き肘支持で体を一直線に保つ。側面体幹の等尺性トレの代表。',caution:'腰が落ちないよう骨盤を持ち上げ続ける'},
+      {name:'ロシアンツイスト',target:'腹斜筋（回旋）',level:'中級',equipment:'ダンベル・自重',time:'5分',sets:'3',reps:'左右各15回',rest:'45秒',description:'座って上体を後傾し、重りを左右に振って体幹をひねる。回旋筋を強く鍛える。',caution:'腰を丸めすぎない。痛みが出たら足を床につける'},
+      {name:'サイドプランク・ヒップディップ',target:'腹斜筋（動的）',level:'中級',equipment:'自重',time:'5分',sets:'3',reps:'左右各12回',rest:'45秒',description:'サイドプランクの姿勢から腰を上下に動かす。横腹を動的に収縮させ強度を高める。',caution:'肩の真下に肘を置き、首をすくめない'},
+      {name:'ウッドチョップ（チューブ）',target:'腹斜筋・体幹回旋パワー',level:'中級',equipment:'チューブ',time:'6分',sets:'3',reps:'左右各12回',rest:'45秒',description:'高い位置のチューブを斧で薪を割るように斜め下へ引く。回旋の出力を機能的に鍛える。',caution:'腕でなく体幹の回旋で引く意識を持つ'},
+      {name:'サイドリバースクランチ',target:'腹斜筋（高強度）',level:'中級',equipment:'自重',time:'6分',sets:'3',reps:'左右各12〜15回',rest:'45秒',description:'仰向けで膝を曲げ、骨盤を斜め前方の片側へひねりながら巻き上げる。床でできるサイドニーレイズの代替で横腹を集中的に刺激する。',formPoints:['骨盤を斜めにひねって上げる','腹斜筋の収縮を感じる','反動を使わない','左右均等に行う'],caution:'首に力を入れず腹筋で動かす'},
+    ]
+  },
+  neck: {
+    summary:'首（胸鎖乳突筋・頚部屈筋・後頚筋群）は頭を支え、肩こり・頭痛の予防にも関わります。デスクワークで弱りやすく、強化と柔軟性の両立が重要です。負荷は必ず軽くゆっくり行います。',
+    exercises:[
+      {name:'チンタック',target:'深頚屈筋・頭前方位の改善',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'10回（5秒キープ）',rest:'なし',description:'顎を引いて二重あごを作る動作。スマホ首を改善し首の深層筋を鍛える基礎種目。',caution:'強く引きすぎず自然な範囲で'},
+      {name:'頚部等尺性トレ（手で抵抗）',target:'頚部屈筋・伸筋・側屈筋',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'各方向5秒×5回',rest:'なし',description:'手のひらを額・後頭部・側頭部に当て、首で軽く押し返す。動かさず力を入れる安全な強化法。',caution:'痛みやめまいが出たら中止。力は最大の半分程度'},
+      {name:'頚部側屈ストレッチ',target:'胸鎖乳突筋・斜角筋',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'頭を横に傾け反対側の首筋を重力で伸ばす。手で無理に引っ張らない。',caution:'回旋を加えず純粋な側屈で'},
+      {name:'後頚部ストレッチ',target:'後頚筋群・板状筋',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30秒',rest:'なし',description:'両手を後頭部に添え、顎を引きながら頭を前に倒して首の後ろを伸ばす。',caution:'力で押し込まず重さを利用する程度に'},
+      {name:'ネックフレクション（仰向け）',target:'頚部前面の筋力',level:'中級',equipment:'なし',time:'4分',sets:'3',reps:'10〜12回',rest:'45秒',description:'仰向けで頭だけをゆっくり持ち上げ顎を胸に近づける。首前面を鍛える。',caution:'勢いをつけず、頚椎に違和感があれば中止'},
+    ]
+  }
+};
+
+// ========== 症状別メニューデータ ==========
+const SYMPTOM_DATA = {
+  stiff_shoulder: {
+    summary:'肩こりの多くは、僧帽筋上部・肩甲挙筋の過緊張と、菱形筋・僧帽筋中下部の筋力低下が同時に起きています。ストレッチで緊張を緩め、インナーマッスルを強化するアプローチが基本です。',
+    exercises:[
+      {name:'肩甲骨ストレッチ（回旋）',target:'僧帽筋・肩甲挙筋のリリース',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'前後各10回',rest:'なし',description:'肩に手をのせ、肘で大きな円を描くように前回り・後回りに回す。肩甲骨を大きく動かすことで僧帽筋の緊張を緩める。',caution:'急性の強い痛みがある場合は行わない'},
+      {name:'ドアフレームストレッチ（胸）',target:'大胸筋・三角筋前部の解放',level:'初級',equipment:'ドア',time:'3分',sets:'2',reps:'30秒',rest:'15秒',description:'ドア枠に肘をついて体を前方に押し出す。巻き肩の原因となる大胸筋と前鋸筋を伸ばす。',caution:'肩に痛みが出る場合は角度を調整する'},
+      {name:'チンタック',target:'頚部前屈筋群・頭前方位の改善',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'10回（5秒キープ）',rest:'なし',description:'顎を後ろに引いて二重あごを作る動作。スマホ首（頭前方位）を改善し、頚部後面の緊張を解放する。',caution:'強く引きすぎず、自然な範囲で'},
+      {name:'フェイスプル（チューブ）',target:'菱形筋・僧帽筋中下部の強化',level:'初級',equipment:'チューブ',time:'5分',sets:'3',reps:'15〜20回',rest:'30秒',description:'チューブを顔の高さに固定し、両手を耳横に引き付けながら肩甲骨を寄せる。弱化した後面筋の強化。',caution:'首・僧帽筋上部に力が入りすぎないよう意識'},
+      {name:'ウォールエンジェル',target:'肩甲骨周囲筋・肩関節可動域',level:'初級',equipment:'なし（壁）',time:'4分',sets:'3',reps:'10回',rest:'30秒',description:'壁に背中・腕・肘をくっつけてバンザイとおろすを繰り返す。肩甲骨の正常な動きを取り戻す。',caution:'腰が反って背中が壁から離れないよう腹圧をかける'},
+      {name:'タオルストレッチ（肩後部）',target:'三角筋後部・棘下筋の解放',level:'初級',equipment:'タオル',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'片腕を胸の前に伸ばしてもう一方の腕で抱えて体に引きつけ、肩の後面を伸ばす。',caution:'肩に激痛がある場合は行わない'},
+    ]
+  },
+  low_back: {
+    summary:'腰痛の多くは、腸腰筋・ハムストリングスの柔軟性低下と、腹横筋・多裂筋（インナーマッスル）の機能低下が原因です。まず柔軟性を回復し、次に安定性を高めます。急性期（炎症期）はすべての運動を避け安静を優先してください。',
+    exercises:[
+      {name:'膝抱えストレッチ',target:'腰部・大臀筋のリリース',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'仰向けで片膝または両膝を胸に引き寄せてキープ。腰部の緊張した筋肉を解放する。',caution:'急性期（ぎっくり腰直後）は禁忌'},
+      {name:'キャットカウ',target:'脊柱の可動性回復',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'10回',rest:'なし',description:'四つん這いで息を吐きながら背中を丸め（キャット）、吸いながら反る（カウ）。脊柱の分節的な動きを回復する。',caution:'痛みの出る範囲は無理に動かさない'},
+      {name:'ドローイン',target:'腹横筋（腰椎安定化）',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'10秒×10回',rest:'30秒',description:'おへそを背骨に引き込み10秒キープ。腰椎を安定させるインナーマッスルを活性化する腰痛改善の基礎種目。',caution:'息を止めない。腹圧のかけすぎに注意'},
+      {name:'デッドバグ',target:'腹横筋・腸腰筋・多裂筋',level:'初級〜中級',equipment:'なし',time:'5分',sets:'3',reps:'左右各8回',rest:'30秒',description:'仰向けで腰を床に押し付けながら対角線の手足を伸ばす。腰椎安定性と体幹協調性を同時に訓練。',caution:'腰が床から浮いた時点で止める'},
+      {name:'グルートブリッジ',target:'大臀筋・ハムストリングス（腰椎負担軽減）',level:'初級',equipment:'なし',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'仰向けで膝を立て、腰を持ち上げてトップで2秒キープ。弱化した大臀筋を強化し腰椎への負担を分散する。',caution:'腰を過度に反らせず、骨盤を水平に保つ'},
+      {name:'腸腰筋ストレッチ（ランジポジション）',target:'腸腰筋・腰椎前弯の改善',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'片膝を床につけてランジの姿勢を作り、腰を前に押し出す。デスクワークで短縮した腸腰筋を伸ばす。',caution:'膝に痛みがある場合はクッションを使用'},
+    ]
+  },
+  knee_pain: {
+    summary:'膝の痛みは大腿四頭筋・大臀筋・腓腹筋の筋力低下と、大腿筋膜張筋・ITバンドの過緊張が複合して起きることが多いです。膝への直接的な負荷を避けながら周囲筋を強化します。急性の膝痛・腫れがある場合は整形外科を受診してください。',
+    exercises:[
+      {name:'クアドセット（等尺性収縮）',target:'大腿四頭筋の活性化',level:'初級',equipment:'タオル',time:'4分',sets:'3',reps:'10秒×10回',rest:'30秒',description:'仰向けで膝の下に丸めたタオルを入れ、膝を伸ばす方向に力を入れてキープ。膝関節に負担をかけずに四頭筋を鍛える。',caution:'膝に痛みが出る場合は即中止'},
+      {name:'SLR（下肢伸展挙上）',target:'大腿四頭筋・腸腰筋',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'10〜15回（片側）',rest:'30秒',description:'仰向けで片膝を立て、もう片方の脚を45度まで伸ばしたまま持ち上げる。膝への負荷ゼロで四頭筋を鍛える。',caution:'腰が反らないよう腹圧をかける'},
+      {name:'グルートブリッジ',target:'大臀筋・膝のアライメント改善',level:'初級',equipment:'なし',time:'5分',sets:'3',reps:'15〜20回',rest:'45秒',description:'臀筋を強化することで膝へのストレス分散ができる。膝痛の保存療法として広く使用される。',caution:'膝を過度に押し付けないよう軽く保持'},
+      {name:'クラムシェル',target:'中臀筋・膝のニーイン防止',level:'初級',equipment:'チューブ（任意）',time:'4分',sets:'3',reps:'15回（両側）',rest:'30秒',description:'横向きで膝を開く動作。中臀筋を強化して膝が内側に入るニーイン（膝痛の原因）を防ぐ。',caution:'骨盤を固定したまま脚だけを動かす'},
+      {name:'カーフストレッチ',target:'腓腹筋・アキレス腱',level:'初級',equipment:'なし（壁）',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'壁に手をついて足を後ろに伸ばし、かかとを床につけたまま前膝を曲げる。ふくらはぎを十分に伸ばす。',caution:'アキレス腱の痛みがある場合は伸ばす範囲を調整'},
+      {name:'ターミナルニーエクステンション（チューブ）',target:'大腿四頭筋内側広筋',level:'初級',equipment:'チューブ',time:'5分',sets:'3',reps:'15〜20回',rest:'30秒',description:'チューブを膝裏にかけて立ち、膝を完全に伸ばしきる動作を繰り返す。内側広筋（VMO）を選択的に鍛える。',caution:'膝に痛みが出る場合は行わない'},
+    ]
+  },
+  poor_posture: {
+    summary:'猫背・巻き肩は、大胸筋・小胸筋の短縮と、菱形筋・僧帽筋中下部・深頚屈筋の弱化が原因です。ストレッチと強化を同時並行で行うことが改善の鍵です。',
+    exercises:[
+      {name:'胸椎モビリティ（フォームローラー）',target:'胸椎の伸展可動性回復',level:'初級',equipment:'フォームローラー・タオル',time:'4分',sets:'3',reps:'10〜15回',rest:'なし',description:'胸椎の下にローラーを入れてゆっくり上体を後方に反らす。丸まった胸椎の可動性を回復する。',caution:'腰椎では行わない。頭を支えながら行う'},
+      {name:'ウォールエンジェル',target:'肩甲骨安定化・肩関節可動域',level:'初級',equipment:'壁',time:'4分',sets:'3',reps:'10回',rest:'30秒',description:'壁に腰・背中・後頭部をつけて腕をバンザイ〜おろす動作。肩甲骨の正常な動きと姿勢を再学習する。',caution:'背中が壁から離れないよう腹圧をかける'},
+      {name:'フェイスプル',target:'菱形筋・僧帽筋中下部の強化',level:'初級',equipment:'チューブ',time:'5分',sets:'3',reps:'15〜20回',rest:'30秒',description:'チューブを顔の高さに固定し、肩甲骨を寄せながら引く。巻き肩の最重要矯正種目。',caution:'肩を上げず、肩甲骨の下制を意識する'},
+      {name:'大胸筋ストレッチ（コーナー）',target:'大胸筋・小胸筋の解放',level:'初級',equipment:'壁',time:'4分',sets:'2',reps:'30秒',rest:'なし',description:'壁のコーナーに両肘をついて体を前に押し出す。短縮した大胸筋・小胸筋を解放する。',caution:'肩関節に不安定感がある場合は控える'},
+      {name:'チンタック＋後頭下筋ストレッチ',target:'深頚屈筋強化・後頭下筋リリース',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'10回（5秒キープ）',rest:'なし',description:'顎を後ろに引くチンタックで深頚屈筋を鍛え、その後頭を下に傾けて後頭部を伸ばす。スマホ首改善。',caution:'めまいがある場合は行わない'},
+      {name:'Yエクササイズ（うつ伏せ）',target:'僧帽筋下部・菱形筋',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'10〜15回',rest:'30秒',description:'うつ伏せでYの字になるよう両腕を斜め上方に持ち上げる。僧帽筋下部を選択的に強化する。',caution:'首を過度に伸ばさず、視線は床に向ける'},
+    ]
+  },
+  fatigue_legs: {
+    summary:'足のむくみ・疲れはふくらはぎポンプ機能の低下と、静脈・リンパの循環不全が原因です。筋収縮で血液を心臓に戻す運動と、静脈還流を助けるポジショニングを組み合わせます。',
+    exercises:[
+      {name:'カーフレイズ（起立位）',target:'腓腹筋ポンプ機能',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'20〜30回',rest:'30秒',description:'その場でかかとを持ち上げる動作を繰り返す。ふくらはぎの筋ポンプを活性化し、静脈血を心臓に戻す。',caution:'椅子や壁をつかんでバランスを保つ'},
+      {name:'足首回し（座位）',target:'足関節周囲筋・リンパ促進',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'前後各10回',rest:'なし',description:'椅子に座って足首をゆっくり大きく回す。足関節の可動性を回復し、ポンプ機能を高める。',caution:'特になし'},
+      {name:'レッグポンプ（仰向け）',target:'静脈還流促進',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'20回',rest:'なし',description:'仰向けで脚を壁に立てかけ、足首を繰り返し上下に動かす。重力を利用した最も効果的な静脈還流促進法。',caution:'立ちくらみがある場合はゆっくり起き上がる'},
+      {name:'つま先歩き＋かかと歩き',target:'下腿全体・バランス',level:'初級',equipment:'なし',time:'5分',sets:'2',reps:'各30秒',rest:'15秒',description:'つま先だけ・かかとだけで交互に歩く。下腿の前後の筋肉を均等に刺激し、循環を改善。',caution:'バランスが崩れやすい場所では壁沿いに'},
+      {name:'グルートブリッジ',target:'臀筋・大腿筋の収縮促進',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'15回',rest:'30秒',description:'仰向けで腰を上げる動作で大腿部〜臀部を収縮させ、下肢全体の血流を促進する。',caution:'腰を反りすぎない'},
+      {name:'自己リンパマッサージ（タオル）',target:'鼠径部・膝窩リンパへの誘導',level:'初級',equipment:'タオル',time:'5分',sets:'1',reps:'足首→膝→股関節の順に各1分',rest:'なし',description:'タオルを使い足首から膝、膝から股関節へと向けて優しくさする。リンパの流れを心臓方向に誘導する。',caution:'強くこすらず、皮膚が赤くならない程度の力で'},
+    ]
+  },
+  hip_tight: {
+    summary:'股関節の硬さは腸腰筋・梨状筋・内転筋・外旋筋群の柔軟性低下が主原因です。長時間の座位生活で短縮しやすく、腰痛・膝痛の遠因にもなります。動的ストレッチと静的ストレッチを組み合わせましょう。',
+    exercises:[
+      {name:'ハーフニーリング腸腰筋ストレッチ',target:'腸腰筋・大腿直筋',level:'初級',equipment:'なし（クッション）',time:'4分',sets:'2',reps:'30〜45秒（両側）',rest:'なし',description:'片膝を床につけてランジ姿勢を作り、体を前方に送りながら骨盤を前傾させずに腰を前に推進する。',caution:'膝が痛い場合はクッションを使用'},
+      {name:'梨状筋ストレッチ（図の四の字）',target:'梨状筋・外旋筋群',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'仰向けで片膝を立て、もう片脚のくるぶしを太ももの上に乗せて四の字を作り前方に引き寄せる。',caution:'腰が床から浮かないよう'},
+      {name:'蝶々ストレッチ',target:'内転筋群',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30〜60秒',rest:'なし',description:'座って両足の裏を合わせ、両膝を外側に開いてキープ。内転筋群を静的に伸ばす。',caution:'上体を前傾しすぎず、骨盤を立てたまま行う'},
+      {name:'ワールドグレイテストストレッチ',target:'股関節屈筋・外旋筋・胸椎',level:'初級〜中級',equipment:'なし',time:'6分',sets:'2',reps:'左右各5回',rest:'なし',description:'ランジ姿勢から前肘を床について、さらに上体をひねって腕を天井に向ける。股関節から胸椎まで連続的にほぐす。',caution:'急に力を入れず、呼吸しながらゆっくり行う'},
+      {name:'ヒップサークル（立位）',target:'股関節全周囲の可動性',level:'初級',equipment:'なし（壁）',time:'3分',sets:'2',reps:'前後各10回',rest:'なし',description:'壁に手をつき、膝を高く持ち上げながら股関節を大きく円を描くように動かす。関節の全可動域を使う。',caution:'バランスに注意。転倒しそうな場合は壁に強くもたれる'},
+      {name:'クラムシェル',target:'中臀筋・外旋筋の強化',level:'初級',equipment:'チューブ（任意）',time:'5分',sets:'3',reps:'15回（両側）',rest:'30秒',description:'股関節の外旋・外転筋を強化して安定性を高める。柔軟性と筋力の両方からアプローチ。',caution:'骨盤を固定したまま行う'},
+    ]
+  },
+  headache: {
+    summary:'緊張型頭痛の多くは頚部後面（後頭下筋・頭板状筋）の過緊張が原因です。スマホや長時間のデスクワークによる頭前方位姿勢が主要な引き金となります。リリースと深頚屈筋の強化を同時に行います。',
+    exercises:[
+      {name:'後頭下筋リリース',target:'後頭下筋群（頭痛の直接原因）',level:'初級',equipment:'テニスボール・タオル',time:'5分',sets:'1',reps:'各ポイント1〜2分',rest:'なし',description:'テニスボールを後頭部と首の境目に当てて仰向けになり、重力で圧迫する。後頭下筋の筋膜リリース。',caution:'強い痛みが出る場合は圧を調整する'},
+      {name:'チンタック',target:'深頚屈筋強化・頭前方位の改善',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'10回（5秒キープ）',rest:'なし',description:'顎を引いて二重あごを作る動作。スマホ首を改善し、頚部後面への負担を軽減する。',caution:'無理に強く引かず自然な範囲で'},
+      {name:'頚部側屈ストレッチ',target:'胸鎖乳突筋・斜角筋',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'頭を横に傾けて反対側の首筋をゆっくり伸ばす。手で頭を引っ張らず重力のみで行う。',caution:'回転を加えず純粋な側屈のみで行う'},
+      {name:'肩甲骨ストレッチ（後退）',target:'菱形筋・僧帽筋中部の活性化',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'10〜15回',rest:'なし',description:'両肘を曲げて後ろに引き肩甲骨を寄せる。僧帽筋上部への過剰な負担を分散する。',caution:'肩を上げず下げた状態で肩甲骨だけ寄せる'},
+      {name:'胸椎伸展（タオル枕）',target:'胸椎可動性・猫背の改善',level:'初級',equipment:'タオル',time:'5分',sets:'1',reps:'1〜2分',rest:'なし',description:'丸めたタオルを肩甲骨の中央付近に置いて仰向けになり、腕を広げてリラックス。胸椎の伸展を回復。',caution:'腰椎に置かない'},
+      {name:'目の体操（遠近交互）',target:'眼輪筋・眼球運動',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'10回',rest:'30秒',description:'近くのもの（30cm）と遠くのもの（5m以上）を交互に見る。眼精疲労からくる頭痛にも有効。',caution:'眩しい光を見ながら行わない'},
+    ]
+  },
+  wrist: {
+    summary:'デスクワーク・スマホ・PC作業による手首・肘の疲れは、前腕屈筋群の過緊張と前腕伸筋群の弱化が原因です。ストレッチ・強化・筋膜リリースを組み合わせましょう。',
+    exercises:[
+      {name:'前腕屈筋ストレッチ',target:'橈側手根屈筋・尺側手根屈筋',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'腕を前に伸ばして手のひらを上に向け、もう一方の手で指を反らせて前腕の内側を伸ばす。',caution:'手首に急な痛みがある場合は行わない'},
+      {name:'前腕伸筋ストレッチ',target:'橈側手根伸筋・総指伸筋',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'腕を前に伸ばして手の甲を上にし、もう一方の手で指を手首方向に曲げて前腕外側を伸ばす。テニス肘の予防にも。',caution:'急性期（肘外側に強い痛み）は行わない'},
+      {name:'リストカール（ダンベル）',target:'前腕屈筋群の強化',level:'初級',equipment:'ダンベル・椅子',time:'5分',sets:'3',reps:'15〜20回',rest:'30秒',description:'膝の上に前腕を乗せ、手首をゆっくり上下に動かす。前腕屈筋群の筋持久力を高める。',caution:'重量は非常に軽めから始める（0.5〜1kg）'},
+      {name:'リバースリストカール',target:'前腕伸筋群（弱化側）の強化',level:'初級',equipment:'ダンベル',time:'5分',sets:'3',reps:'15〜20回',rest:'30秒',description:'手の甲を上にして手首を上下に動かす。テニス肘・マウス腱鞘炎の予防・改善に効果的。',caution:'痛みが強い場合はチューブに変更'},
+      {name:'グリップ強化（グリッパー）',target:'手指屈筋群・前腕全体',level:'初級',equipment:'ハンドグリッパー・タオル',time:'4分',sets:'3',reps:'20〜30回',rest:'30秒',description:'グリッパーを握るか、タオルを丸めてしぼる動作で手指と前腕を均等に強化する。',caution:'急性の腱鞘炎期は行わない'},
+      {name:'手首回し',target:'手関節周囲の血流改善',level:'初級',equipment:'なし',time:'2分',sets:'2',reps:'前後各10回',rest:'なし',description:'手首をゆっくり大きく回す。手根骨周囲の筋膜とじん帯の柔軟性を維持する。',caution:'TFCC（三角線維軟骨複合体）損傷の既往がある場合は要注意'},
+    ]
+  },
+  muscle_sore: {
+    summary:'筋肉痛（遅発性筋痛・DOMS）は運動でできた微細な筋繊維の損傷と炎症が原因です。完全に休むより、軽い運動・血流促進・ストレッチで回復を早める「アクティブレスト」が有効です。激しい痛みや腫れ・発熱がある場合は運動を避けてください。',
+    exercises:[
+      {name:'軽いウォーキング',target:'全身の血流促進',level:'初級',equipment:'なし',time:'10分',sets:'1',reps:'10〜20分',rest:'なし',description:'痛む部位に負担をかけない範囲でゆっくり歩く。血流を促し老廃物の排出と回復を早める。',caution:'痛みが強まる場合は中止して安静に'},
+      {name:'動的ストレッチ（軽め）',target:'筋温上昇・可動域回復',level:'初級',equipment:'なし',time:'5分',sets:'1',reps:'各部位10回',rest:'なし',description:'腕回し・足振りなど反動を使わない軽い動的ストレッチで筋肉をゆっくり動かす。',caution:'痛みの範囲を超えて動かさない'},
+      {name:'フォームローラー（筋膜リリース）',target:'筋膜の癒着・血流改善',level:'初級',equipment:'フォームローラー',time:'8分',sets:'1',reps:'各部位30〜60秒',rest:'なし',description:'痛む筋肉の上をローラーでゆっくり転がす。筋膜の緊張を緩め回復を促進する。',caution:'激痛がある箇所は無理に圧迫しない'},
+      {name:'ぬるめの入浴＋ストレッチ',target:'血行促進・リラックス',level:'初級',equipment:'なし',time:'15分',sets:'1',reps:'入浴後に各30秒',rest:'なし',description:'38〜40度のぬるめの湯で体を温めた後、静的ストレッチを行う。温熱で筋肉が緩み伸びやすくなる。',caution:'運動直後の熱い湯は炎症を悪化させるので避ける'},
+      {name:'静的ストレッチ（該当部位）',target:'筋緊張の緩和',level:'初級',equipment:'なし',time:'6分',sets:'2',reps:'30秒（各部位）',rest:'なし',description:'痛む筋肉をゆっくり伸ばして20〜30秒保持。反動をつけず呼吸を続ける。',caution:'伸ばして鋭い痛みが走る場合は中止'},
+    ]
+  },
+  whole_fatigue: {
+    summary:'全身の疲労感は、血行不良・自律神経の乱れ・運動不足が複合して起きることが多いです。軽い有酸素運動と深い呼吸で副交感神経を整え、血流を促すと回復しやすくなります。睡眠不足や持続する強い倦怠感がある場合は医療機関を受診してください。',
+    exercises:[
+      {name:'深呼吸（腹式呼吸）',target:'自律神経・副交感神経の活性',level:'初級',equipment:'なし',time:'5分',sets:'1',reps:'4秒吸う→8秒吐く×10回',rest:'なし',description:'鼻から4秒吸い、口から8秒かけて吐く。吐く時間を長くして副交感神経を優位にし疲労を回復する。',caution:'めまいが出たら通常呼吸に戻す'},
+      {name:'全身伸び（バンザイストレッチ）',target:'全身の血流・脊柱伸展',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'10秒×5回',rest:'なし',description:'立って両手を上に伸ばし全身を引き上げる。デスクワークで縮んだ体を伸ばし循環を促す。',caution:'反らしすぎて腰を痛めない'},
+      {name:'壁に足上げ（レッグアップ）',target:'静脈還流・リラックス',level:'初級',equipment:'なし（壁）',time:'8分',sets:'1',reps:'5〜10分',rest:'なし',description:'仰向けで脚を壁に立てかけて休む。下半身に溜まった血液を心臓に戻し全身の疲労を和らげる。',caution:'立ちくらみ予防にゆっくり起き上がる'},
+      {name:'軽い有酸素（その場足踏み）',target:'全身の血流・代謝活性',level:'初級',equipment:'なし',time:'5分',sets:'1',reps:'3〜5分',rest:'なし',description:'その場で軽く足踏みし腕も振る。心拍を少し上げて血流を促し、だるさを解消する。',caution:'息が上がりすぎない強度で'},
+      {name:'肩甲骨ほぐし',target:'上半身の血行・こり解消',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'前後各10回',rest:'なし',description:'両肩を大きく回し肩甲骨を動かす。上半身の血流を改善し疲労感を軽減する。',caution:'特になし'},
+    ]
+  },
+  numbness: {
+    summary:'手足の痺れは、同一姿勢による神経の圧迫・血行不良・筋肉の緊張が原因のことが多いです。軽い運動と神経の滑走を促す動きで改善を図ります。ただし、痺れが片側だけ・持続する・力が入らない場合は神経や血管の疾患の可能性があるため、必ず医療機関を受診してください。',
+    exercises:[
+      {name:'手首・足首の曲げ伸ばし',target:'末梢の血行促進',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'各20回',rest:'なし',description:'手首と足首をゆっくり大きく曲げ伸ばしする。末端の血流を促し一時的な痺れを和らげる。',caution:'痺れが強まる動きは避ける'},
+      {name:'正中神経グライド（神経滑走）',target:'手のしびれ（神経の滑り改善）',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'10回ゆっくり',rest:'なし',description:'腕を伸ばし手のひらを上にして指を反らす〜握るを繰り返す。神経の滑走性を改善する穏やかな運動。',caution:'痺れや痛みが増したら即中止。ゆっくり行う'},
+      {name:'肩甲骨・首のストレッチ',target:'胸郭出口・神経圧迫の緩和',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'30秒（各方向）',rest:'なし',description:'首を傾け肩を下げて首肩周りを伸ばす。腕に向かう神経の通り道の圧迫を和らげる。',caution:'めまいが出たら中止'},
+      {name:'グーパー運動',target:'手指の血流・神経活性',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'20回',rest:'なし',description:'手を強く握る・大きく開くを繰り返す。指先の血流を促し痺れを軽減する手軽な運動。',caution:'特になし。こまめに行うと効果的'},
+      {name:'足趾(あしゆび)グーパー',target:'足先の血行・神経刺激',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'20回',rest:'なし',description:'足の指を握る・開くを繰り返し、足先の血流と感覚を刺激する。冷えやしびれの予防にも。',caution:'つりやすい場合は回数を減らす'},
+    ]
+  },
+  dizziness: {
+    summary:'ふらつき・平衡感覚の低下は、前庭機能の低下・体幹バランス筋の衰え・血圧変動が関わります。安全な環境でバランス訓練を行うと改善が期待できます。回転性のめまい・吐き気・耳鳴りを伴う場合や頻発する場合は、必ず医療機関を受診してください。運動は必ず壁や椅子の近くで行ってください。',
+    exercises:[
+      {name:'片足立ち（支持あり）',target:'体幹・下肢バランス',level:'初級',equipment:'なし（椅子）',time:'4分',sets:'3',reps:'左右各20〜30秒',rest:'なし',description:'椅子の背に手を添えて片足で立つ。バランス保持筋と前庭系を安全に鍛える基礎種目。',caution:'必ず支えのそばで。ふらついたらすぐ足をつく'},
+      {name:'かかと-つま先歩き',target:'動的バランス・歩行安定',level:'初級',equipment:'なし（壁沿い）',time:'4分',sets:'2',reps:'10歩×2往復',rest:'なし',description:'片足のかかとをもう片足のつま先につけて一直線に歩く。動的なバランス能力を高める。',caution:'壁に沿って行い、転倒に注意'},
+      {name:'頭の動きと注視（前庭リハ）',target:'前庭眼反射・平衡感覚',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'各方向10回',rest:'なし',description:'指先など一点を見つめたまま頭をゆっくり左右・上下に動かす。前庭機能のリハビリに用いられる運動。',caution:'座って行い、めまいが強まったら中止し休む'},
+      {name:'重心移動エクササイズ',target:'体幹バランス・足圧感覚',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'前後左右各10回',rest:'なし',description:'足を肩幅に開いて立ち、体重を前後左右にゆっくり移す。重心コントロールを訓練する。',caution:'支えのそばで。大きく崩さない範囲で'},
+      {name:'椅子スクワット',target:'下肢筋力・起立安定',level:'初級',equipment:'椅子',time:'5分',sets:'3',reps:'10〜15回',rest:'45秒',description:'椅子に座る・立つを繰り返す。立ちくらみの一因となる下肢筋力を安全に強化する。',caution:'急に立ち上がらずゆっくり行う'},
+    ]
+  },
+  eye_strain: {
+    summary:'眼精疲労は、長時間の近距離凝視による毛様体筋の緊張と、目周囲・首肩の血行不良が原因です。目の運動・遠近のピント切替・首肩のケアを組み合わせると効果的です。視野の異常や強い頭痛を伴う場合は眼科を受診してください。',
+    exercises:[
+      {name:'遠近ピント切替',target:'毛様体筋のストレッチ',level:'初級',equipment:'なし',time:'3分',sets:'3',reps:'10回',rest:'30秒',description:'近く(30cm)と遠く(5m以上)を交互に2〜3秒ずつ見る。凝り固まった目のピント調節筋をほぐす。',caution:'眩しい光源を直接見ない'},
+      {name:'眼球運動（上下左右・回旋）',target:'外眼筋の柔軟性',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'各方向5回',rest:'なし',description:'顔は動かさず目だけを上下左右・ぐるりと回す。外眼筋を動かし血流を促す。',caution:'目に痛みがあれば中止'},
+      {name:'ホットアイ（蒸しタオル）',target:'目周囲の血行促進',level:'初級',equipment:'タオル',time:'5分',sets:'1',reps:'目を閉じて3〜5分',rest:'なし',description:'温めたタオルを閉じた目に当てる。目周囲を温め血流を改善し緊張を解く。',caution:'熱すぎないよう温度を確認する'},
+      {name:'こめかみ・眉間ツボ押し',target:'目周囲のこり緩和',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'各5秒×5回',rest:'なし',description:'こめかみと眉頭を指でやさしく押す。目の周りの緊張と疲れを和らげる。',caution:'眼球を直接押さない'},
+      {name:'首肩ストレッチ',target:'目に向かう血流改善',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'30秒（各方向）',rest:'なし',description:'首を傾け肩を回して首肩をほぐす。目への血流を妨げる首肩のこりを解消する。',caution:'ゆっくり行う'},
+    ]
+  },
+  cold_sensitivity: {
+    summary:'冷え性は、筋肉量の不足・末梢の血行不良・自律神経の乱れが主な原因です。特にふくらはぎ（第二の心臓）を動かして血流を促し、大きな筋肉を使って熱産生を高めることが効果的です。',
+    exercises:[
+      {name:'カーフレイズ',target:'ふくらはぎポンプ・全身循環',level:'初級',equipment:'なし',time:'4分',sets:'3',reps:'20〜30回',rest:'30秒',description:'かかとの上げ下げを繰り返す。ふくらはぎのポンプ作用で下半身の血液を全身に巡らせ体を温める。',caution:'バランスに注意し壁に手を添える'},
+      {name:'足趾グーパー＋足首回し',target:'末梢の血行促進',level:'初級',equipment:'なし',time:'4分',sets:'2',reps:'各20回',rest:'なし',description:'足の指の握り開きと足首回しで足先の血流を促す。冷えやすい末端を温める。',caution:'つりやすい場合は無理をしない'},
+      {name:'スクワット',target:'下半身の大筋群・熱産生',level:'初級',equipment:'なし',time:'5分',sets:'3',reps:'15回',rest:'45秒',description:'体で最も大きい下半身の筋肉を使い熱を生み出す。基礎代謝を高め冷えにくい体を作る。',caution:'膝が内に入らないよう注意'},
+      {name:'その場ジョギング',target:'全身の血流・体温上昇',level:'初級',equipment:'なし',time:'5分',sets:'1',reps:'2〜3分',rest:'なし',description:'その場で軽く走り全身の血流と体温を上げる。短時間で手足の冷えを和らげる。',caution:'関節に痛みがあれば足踏みに変更'},
+      {name:'肩甲骨まわし（褐色脂肪刺激）',target:'肩甲骨周囲・熱産生',level:'初級',equipment:'なし',time:'3分',sets:'2',reps:'前後各10回',rest:'なし',description:'肩甲骨を大きく動かす。周囲にある熱を生む褐色脂肪細胞を刺激し体を温めるとされる。',caution:'特になし'},
+    ]
+  },
+  sleep: {
+    summary:'寝つきの悪さは、交感神経の高ぶり・体の緊張・深部体温の調節不良が関わります。就寝前は副交感神経を優位にする穏やかなストレッチと深い呼吸が効果的です。激しい運動は逆効果なので避け、照明を落として行いましょう。',
+    exercises:[
+      {name:'4-7-8呼吸法',target:'副交感神経・入眠促進',level:'初級',equipment:'なし',time:'4分',sets:'1',reps:'4回',rest:'なし',description:'4秒吸う→7秒止める→8秒吐くを繰り返す。心拍を落ち着かせ入眠しやすい状態を作る呼吸法。',caution:'苦しければ秒数を短く調整する'},
+      {name:'チャイルドポーズ',target:'背中・腰のリラックス',level:'初級',equipment:'なし',time:'4分',sets:'1',reps:'1〜2分',rest:'なし',description:'正座から上体を前に倒し額を床につけ脱力する。背中・腰を優しく伸ばし心身を落ち着かせる。',caution:'膝が痛い場合はクッションを挟む'},
+      {name:'仰向け膝抱え（ガス抜き）',target:'腰部・股関節のリラックス',level:'初級',equipment:'なし',time:'3分',sets:'1',reps:'30秒×2',rest:'なし',description:'仰向けで両膝を抱え腰を丸める。緊張した腰回りを緩めリラックスを促す。',caution:'呼吸を止めず深くゆっくり行う'},
+      {name:'仰向けツイスト',target:'背骨・体側のリリース',level:'初級',equipment:'なし',time:'4分',sets:'1',reps:'左右各30秒',rest:'なし',description:'仰向けで両膝を立て左右にゆっくり倒す。背骨周りの緊張を解き穏やかに体をほぐす。',caution:'反動をつけず重さで倒す程度に'},
+      {name:'全身脱力（漸進的弛緩法）',target:'全身の緊張解放',level:'初級',equipment:'なし',time:'6分',sets:'1',reps:'各部位5秒緊張→脱力',rest:'なし',description:'手・腕・肩・顔・脚と順に5秒力を入れて一気に抜く。意識的に脱力し体の緊張を手放す。',caution:'布団の上で行いそのまま眠ってよい'},
+    ]
+  }
+};
+
+// ========== ストレッチ/セルフケア データ ==========
+const CARE = [
+  {id:'before_sleep', icon:'🌙', name:'寝る前ストレッチ', meta:'約8分・寝室でOK', desc:'布団の上で心身をゆるめて快眠へ'},
+  {id:'morning',      icon:'🌅', name:'朝の目覚め',       meta:'約5分・ベッドで',   desc:'体を起こし1日を軽やかに始める'},
+  {id:'desk_3min',    icon:'⏱', name:'デスクで3分',     meta:'約3分・座ったまま', desc:'仕事の合間にこっそりリフレッシュ'},
+  {id:'neck_shoulder',icon:'💆', name:'首肩こり解消',     meta:'約6分・椅子/立位',  desc:'PC作業で固まった首肩を一気にほぐす'},
+  {id:'eye_quick',    icon:'👁', name:'目の疲れリセット', meta:'約4分・どこでも',   desc:'スマホ・PC疲れの目をいたわる'},
+  {id:'lower_body',   icon:'🦵', name:'下半身すっきり',   meta:'約7分・床で',       desc:'むくみ・脚の疲れ・冷えに'},
+  {id:'back_relief',  icon:'🛟', name:'腰ラクケア',       meta:'約6分・床で',       desc:'座りっぱなしの腰をやさしく解放'},
+  {id:'full_relax',   icon:'🧘', name:'全身リラックス',   meta:'約10分・床で',      desc:'休日にじっくり全身をリセット'},
+];
+
+const CARE_DATA = {
+  before_sleep: {
+    summary:'就寝前は副交感神経を優位にする穏やかなストレッチが効果的です。照明を落とし、呼吸を深くしながらゆっくり行うと寝つきが良くなります。布団やベッドの上でそのまま行えます。',
+    exercises:[
+      {name:'4-7-8呼吸法',target:'副交感神経・入眠準備',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'4回',rest:'なし',description:'4秒吸い7秒止め8秒で吐く。心拍を落ち着け眠りに入りやすい状態を作る。',caution:'苦しければ秒数を短くする'},
+      {name:'チャイルドポーズ',target:'背中・腰のリラックス',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'1〜2分',rest:'なし',description:'正座から上体を前に倒し額を床につけ脱力。背中と腰を優しく伸ばす。',caution:'膝が痛ければクッションを挟む'},
+      {name:'仰向け膝抱え',target:'腰部のゆるめ',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'30秒×2',rest:'なし',description:'仰向けで両膝を胸に抱え腰を丸める。緊張した腰回りをリリースする。',caution:'呼吸を止めない'},
+      {name:'仰向けツイスト',target:'背骨・体側のリリース',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'左右各30秒',rest:'なし',description:'仰向けで膝を立て左右にゆっくり倒す。背骨周りの緊張を解く。',caution:'反動をつけず重さで倒す'},
+      {name:'全身脱力（漸進的弛緩法）',target:'全身の緊張解放',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'各部位5秒→脱力',rest:'なし',description:'手→肩→顔→脚と力を入れて一気に抜く。そのまま眠ってよい。',caution:'布団の上で行う'},
+    ]
+  },
+  morning: {
+    summary:'朝のストレッチは交感神経をゆるやかに高め、こわばった体を目覚めさせます。ベッドの上から始められる動きで、血流を促し1日を軽やかにスタートしましょう。',
+    exercises:[
+      {name:'全身伸び（背伸び）',target:'全身の覚醒・脊柱伸展',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'10秒×3',rest:'なし',description:'仰向けで手足を上下に大きく伸ばす。眠っていた筋肉を目覚めさせ血流を促す。',caution:'つりやすい人はゆっくり'},
+      {name:'膝抱えゆらゆら',target:'腰背部のほぐし',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'30秒',rest:'なし',description:'両膝を抱えて背中を左右にゆらす。寝ている間に固まった腰をほぐす。',caution:'特になし'},
+      {name:'キャットカウ',target:'背骨の可動性',level:'初級',equipment:'なし',time:'2分',sets:'2',reps:'8回',rest:'なし',description:'四つん這いで背中を丸める・反るを呼吸に合わせ繰り返す。脊柱を目覚めさせる。',caution:'痛みの範囲で'},
+      {name:'首・肩まわし',target:'上半身の血行',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'各10回',rest:'なし',description:'首と肩をゆっくり大きく回す。寝起きの首肩のこわばりを取る。',caution:'急に大きく回さない'},
+    ]
+  },
+  desk_3min: {
+    summary:'座ったままできる3分ケアです。長時間のデスクワークで滞った血流を促し、首肩腰の緊張をこまめにリセットしましょう。周りに気づかれずに行えます。',
+    exercises:[
+      {name:'肩すくめ＆ストン',target:'僧帽筋上部のこり緩和',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'5回',rest:'なし',description:'両肩を耳に近づけ5秒キープし、力を抜いてストンと落とす。肩の緊張を解放する。',caution:'特になし'},
+      {name:'チンタック',target:'スマホ首の改善',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'10回',rest:'なし',description:'顎を引いて二重あごを作る。前に出た頭を正しい位置に戻す。',caution:'強く引きすぎない'},
+      {name:'座位ツイスト',target:'背骨・腰のリフレッシュ',level:'初級',equipment:'椅子',time:'1分',sets:'1',reps:'左右各15秒',rest:'なし',description:'椅子に座り背もたれを掴んで上体をひねる。座りっぱなしの背骨を動かす。',caution:'反動をつけない'},
+      {name:'足首回し（座位）',target:'下肢の血行・むくみ予防',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'各10回',rest:'なし',description:'足首を大きく回す。足元の血流を促しむくみを予防する。',caution:'特になし'},
+    ]
+  },
+  neck_shoulder: {
+    summary:'首・肩のこりは僧帽筋上部や肩甲挙筋の過緊張が主因です。ストレッチで緩め、肩甲骨を動かして血流を促すことで、PC作業で固まった首肩を効率よくほぐします。',
+    exercises:[
+      {name:'頚部側屈ストレッチ',target:'胸鎖乳突筋・斜角筋',level:'初級',equipment:'なし',time:'2分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'頭を横に倒し首筋を重力で伸ばす。手で無理に引かない。',caution:'回旋を加えない'},
+      {name:'肩甲骨まわし',target:'僧帽筋・肩甲骨の血行',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'前後各10回',rest:'なし',description:'肩に手を置き肘で大きく円を描く。肩甲骨を動かしこりを緩める。',caution:'特になし'},
+      {name:'後頚部ストレッチ',target:'後頚筋群・板状筋',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'30秒',rest:'なし',description:'手を後頭部に添え顎を引いて頭を前に倒す。首の後ろを伸ばす。',caution:'力で押し込まない'},
+      {name:'胸開きストレッチ',target:'大胸筋・巻き肩改善',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'30秒',rest:'なし',description:'両手を後ろで組み胸を開く。前かがみで縮んだ胸を伸ばし姿勢を整える。',caution:'肩に痛みが出たら角度を調整'},
+      {name:'肩すくめ＆ストン',target:'僧帽筋上部の脱力',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'5回',rest:'なし',description:'肩を上げて5秒キープし一気に落とす。緊張と弛緩で深いリリースを得る。',caution:'特になし'},
+    ]
+  },
+  eye_quick: {
+    summary:'目の疲れは毛様体筋の緊張と目周囲の血行不良が原因です。短時間の目の運動とピント調節、温めで疲れをリセットします。スマホ・PC作業の合間にこまめに行いましょう。',
+    exercises:[
+      {name:'遠近ピント切替',target:'毛様体筋のストレッチ',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'10回',rest:'なし',description:'近く(30cm)と遠く(5m以上)を交互に見てピント調節筋をほぐす。',caution:'眩しい光源を見ない'},
+      {name:'眼球運動',target:'外眼筋の柔軟性',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'各方向5回',rest:'なし',description:'顔は固定し目だけを上下左右・回旋。外眼筋を動かす。',caution:'痛みがあれば中止'},
+      {name:'ぎゅっと閉じてパッ',target:'目周囲の血行・涙の分泌',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'10回',rest:'なし',description:'強く目を閉じて2秒、パッと開く。目周りの筋肉と血流を刺激する。',caution:'特になし'},
+      {name:'こめかみツボ押し',target:'目周囲のこり緩和',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'5秒×5回',rest:'なし',description:'こめかみを指で優しく押す。目の疲れと緊張を和らげる。',caution:'眼球は押さない'},
+    ]
+  },
+  lower_body: {
+    summary:'下半身のむくみ・疲れ・冷えは、ふくらはぎのポンプ機能低下と循環不良が原因です。脚を動かし血流を心臓に戻すことで、すっきり軽い脚を目指します。',
+    exercises:[
+      {name:'壁に足上げ',target:'静脈還流・むくみ解消',level:'初級',equipment:'なし（壁）',time:'2分',sets:'1',reps:'2〜3分',rest:'なし',description:'仰向けで脚を壁に立てかける。下半身の血液を心臓に戻しむくみを取る。',caution:'立ちくらみ予防にゆっくり起きる'},
+      {name:'カーフレイズ',target:'ふくらはぎポンプ',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'20回',rest:'30秒',description:'かかとの上げ下げで血液を巡らせる。むくみ・冷えに効く。',caution:'壁に手を添える'},
+      {name:'足趾グーパー＋足首回し',target:'末梢の血行促進',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'各15回',rest:'なし',description:'足指の握り開きと足首回しで足先の血流を促す。',caution:'つりやすければ控えめに'},
+      {name:'もも裏ストレッチ',target:'ハムストリングスのリリース',level:'初級',equipment:'なし',time:'2分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'座って片脚を伸ばし上体を前に倒す。脚の張りを和らげる。',caution:'背中を丸めすぎない'},
+      {name:'股関節ゆらし',target:'股関節の血行・柔軟',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'30秒',rest:'なし',description:'あぐらで膝を上下にゆらす。股関節周りをほぐし循環を促す。',caution:'反動を強くつけない'},
+    ]
+  },
+  back_relief: {
+    summary:'座りっぱなしで固まった腰は、腸腰筋の短縮と体幹の緊張が関わります。腰に負担をかけずやさしく動かし、緊張をゆるめて軽くします。強い痛みがある時は無理をしないでください。',
+    exercises:[
+      {name:'キャットカウ',target:'脊柱の可動性回復',level:'初級',equipment:'なし',time:'2分',sets:'2',reps:'8回',rest:'なし',description:'四つん這いで背中を丸める・反るを呼吸に合わせる。腰背部をやさしく動かす。',caution:'痛みの範囲で'},
+      {name:'膝抱えストレッチ',target:'腰部・臀部のリリース',level:'初級',equipment:'なし',time:'1分',sets:'2',reps:'30秒（両側）',rest:'なし',description:'仰向けで片膝を胸に引き寄せキープ。腰の緊張を解放する。',caution:'急性腰痛時は避ける'},
+      {name:'仰向けツイスト',target:'腰回り・体側のリリース',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'左右各30秒',rest:'なし',description:'膝を立てて左右に倒す。腰回りの緊張を穏やかに緩める。',caution:'肩を床につけたまま'},
+      {name:'腸腰筋ストレッチ',target:'腸腰筋・腰椎の負担軽減',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'30秒（両側）',rest:'なし',description:'片膝立ちのランジ姿勢で腰を前に押し出す。座位で縮んだ腸腰筋を伸ばす。',caution:'膝が痛ければクッションを'},
+    ]
+  },
+  full_relax: {
+    summary:'休日にじっくり全身をリセットするルーティンです。大きな筋肉から末端まで順にほぐし、深い呼吸でリラックスを深めます。時間をかけて丁寧に行いましょう。',
+    exercises:[
+      {name:'深呼吸で導入',target:'リラックスの準備',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'10回',rest:'なし',description:'鼻から吸い口から長く吐く。体をリラックスモードに切り替える。',caution:'めまいが出たら通常呼吸に'},
+      {name:'キャットカウ',target:'背骨の可動性',level:'初級',equipment:'なし',time:'2分',sets:'2',reps:'10回',rest:'なし',description:'背中を丸める・反るで脊柱全体をほぐす。',caution:'痛みの範囲で'},
+      {name:'チャイルドポーズ',target:'背中・腰・肩のリリース',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'1〜2分',rest:'なし',description:'上体を前に倒し額を床につけ脱力。背面全体をゆるめる。',caution:'膝が痛ければクッションを'},
+      {name:'股関節ストレッチ（蝶々）',target:'内転筋・股関節',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'1分',rest:'なし',description:'足裏を合わせ膝を開く。股関節周りをじっくり伸ばす。',caution:'骨盤を立てて行う'},
+      {name:'もも裏＆ふくらはぎ',target:'下肢全体のリリース',level:'初級',equipment:'なし',time:'2分',sets:'1',reps:'30秒（各部位）',rest:'なし',description:'長座で前屈し脚の後面を伸ばす。下半身の疲れを取る。',caution:'反動をつけない'},
+      {name:'全身脱力',target:'全身の緊張解放',level:'初級',equipment:'なし',time:'1分',sets:'1',reps:'各部位5秒→脱力',rest:'なし',description:'各部位に力を入れて一気に抜く。最後に全身の力を手放す。',caution:'仰向けで楽な姿勢で'},
+    ]
+  }
+};
+
+
+
+let selectedMuscles = new Set();
+let selectedSymptom = null;
+
+// ========== レベル判定データ ==========
+const QUIZ = [
+  {id:'age', type:'num', title:'年齢', sub:'年齢に応じて回復力・推奨負荷が変わります。', placeholder:'例: 35'},
+  {id:'freq', type:'opt', title:'週の運動頻度', sub:'現在、定期的に体を動かしている回数は？', options:[
+    {label:'ほとんどしない',v:0},{label:'週1〜2回',v:1},{label:'週3〜4回',v:2},{label:'週5回以上',v:3}]},
+  {id:'years', type:'opt', title:'運動・筋トレ歴', sub:'継続的にトレーニングしてきた期間は？', options:[
+    {label:'未経験〜半年',v:0},{label:'半年〜2年',v:1},{label:'2〜5年',v:2},{label:'5年以上',v:3}]},
+  {id:'pushup', type:'opt', title:'連続プッシュアップ（腕立て）', sub:'正しいフォームで連続何回できますか？（手は肩幅より少し広く・体は頭からかかとまで一直線・肘は45度後方・胸を床ギリギリまで・腰を反らさない）', options:[
+    {label:'0〜5回',v:0},{label:'6〜15回',v:1},{label:'16〜30回',v:2},{label:'31回以上',v:3}]},
+  {id:'squat', type:'opt', title:'空気イススクワット', sub:'太もも水平まで連続何回できますか？（足は肩幅・つま先と膝は同じ向き・お尻を後ろに引く・かかと重心・背すじを伸ばす）', options:[
+    {label:'0〜15回',v:0},{label:'16〜30回',v:1},{label:'31〜50回',v:2},{label:'51回以上',v:3}]},
+  {id:'plank', type:'opt', title:'プランク保持時間', sub:'体を一直線に保てる時間は？（肘は肩の真下・お尻を上げも下げもしない・お腹に力・呼吸は止めない）', options:[
+    {label:'30秒未満',v:0},{label:'30秒〜1分',v:1},{label:'1〜2分',v:2},{label:'2分以上',v:3}]},
+  {id:'pullup', type:'opt', title:'パイクプッシュアップ（肩の力）', sub:'お尻を高く上げた逆Vの姿勢で頭を床に近づける腕立てが連続何回できますか？（懸垂が家で難しい方向け・肩と背中の上部の強さの目安）', options:[
+    {label:'0〜2回',v:0},{label:'3〜6回',v:1},{label:'7〜12回',v:2},{label:'13回以上',v:3}]},
+];
+let quizAnswers = {};
+
+// Build level quiz
+document.getElementById('quiz-container').innerHTML = QUIZ.map(q=>`
+  <div class="quiz-q">
+    <div class="q-title"><span class="q-no">Q${QUIZ.indexOf(q)+1}</span>${q.title}</div>
+    <div class="q-sub">${q.sub}</div>
+    ${q.type==='num'
+      ? `<input type="number" class="num-input" id="q-${q.id}" placeholder="${q.placeholder}" min="10" max="99" oninput="quizAnswers['${q.id}']=this.value">`
+      : `<div class="opt-row" id="q-${q.id}">${q.options.map((o,i)=>`<button class="opt-btn" onclick="selectOpt('${q.id}',${o.v},this)">${o.label}</button>`).join('')}</div>`
+    }
+  </div>`).join('');
+
+function selectOpt(qid, val, btn){
+  quizAnswers[qid] = val;
+  btn.parentElement.querySelectorAll('.opt-btn').forEach(b=>b.classList.remove('selected'));
+  btn.classList.add('selected');
+}
+
+function calcLevel(){
+  // performance score: freq, years, pushup, squat, plank, pullup (each 0-3) => max 18
+  const keys = ['freq','years','pushup','squat','plank','pullup'];
+  let answered = keys.filter(k=>quizAnswers[k]!==undefined).length;
+  if(answered < keys.length){
+    alert('すべての項目を選択してください（年齢は任意）');
+    return;
+  }
+  let score = keys.reduce((s,k)=>s+(quizAnswers[k]||0),0); // 0-18
+  // age adjustment: 50歳以上はやや控えめ判定
+  const age = parseInt(quizAnswers.age||0);
+  if(age>=60) score = Math.max(0, score-2);
+  else if(age>=50) score = Math.max(0, score-1);
+
+  // 懸垂が4回以上できれば中級以上を保証
+  const pullupBonus = (quizAnswers.pullup>=2);
+
+  let level, cls, desc, recLevel;
+  const pct = Math.round(score/18*100);
+  if(score>=12 || (score>=10 && pullupBonus)){
+    level='ADVANCED'; cls='advanced'; recLevel='上級';
+    desc='高い基礎筋力と運動習慣があります。上級種目に挑戦し、高重量・高難度の自重種目で更なる成長を狙えます。フォームの精度と漸進的過負荷を重視しましょう。';
+  } else if(score>=6){
+    level='INTERMEDIATE'; cls='intermediate'; recLevel='中級';
+    desc='基礎が身についた中級者です。中級種目を中心に、徐々に上級種目を取り入れましょう。「懸垂やプランク2分」などの目標種目ができれば上級が見えてきます。';
+  } else {
+    level='BEGINNER'; cls='beginner'; recLevel='初級';
+    desc='まずは初級種目で正しいフォームと運動習慣を作る時期です。週2〜3回の継続を最優先に。プッシュアップ15回・プランク1分が次の目標です。';
+  }
+
+  myRecommendedLevel = recLevel;
+  const r = document.getElementById('level-result');
+  r.innerHTML = `
+    <div class="level-badge-big ${cls}">
+      <div class="lv-label">YOUR LEVEL</div>
+      <div class="lv-name">${level}</div>
+      <div class="lv-score">スコア ${score} / 18　・　推奨難易度: <strong>${recLevel}</strong></div>
+      <div class="level-bar"><div class="level-bar-fill" style="width:0%"></div></div>
+      <div class="lv-desc">${desc}</div>
+    </div>
+    <button class="generate-btn" onclick="switchTab('custom')">推奨レベルの種目を見る →</button>`;
+  r.classList.add('visible');
+  setTimeout(()=>{ r.querySelector('.level-bar-fill').style.width = pct+'%'; }, 100);
+  r.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+let myRecommendedLevel = null;
+
+// Build grids
+document.getElementById('muscle-grid').innerHTML = MUSCLES.map(m=>`
+  <button class="muscle-btn" onclick="toggleMuscle('${m.id}')">
+    <span class="icon">${m.icon}</span>${m.label}
+  </button>`).join('');
+
+document.getElementById('symptom-grid').innerHTML = SYMPTOMS.map(s=>`
+  <button class="symptom-btn" onclick="selectSymptom('${s.id}')">
+    <span class="s-icon">${s.icon}</span>
+    <span class="s-name">${s.name}</span>
+    <span class="s-desc">${s.desc}</span>
+  </button>`).join('');
+
+document.getElementById('care-grid').innerHTML = CARE.map(c=>`
+  <button class="care-card" onclick="selectCare('${c.id}', this)">
+    <span class="c-icon">${c.icon}</span>
+    <span class="c-name">${c.name}</span>
+    <span class="c-meta">${c.meta}</span>
+    <span class="c-desc">${c.desc}</span>
+  </button>`).join('');
+
+function switchTab(tab) {
+  const tabs = ['level','muscle','symptom','care','custom','journal'];
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active', tabs[i]===tab));
+  tabs.forEach(t=>{
+    const p = document.getElementById('panel-'+t);
+    if(p) p.classList.toggle('active', t===tab);
+  });
+  if(tab==='custom'){
+    // apply recommended level filter on first entry
+    if(myRecommendedLevel && custFilter==='all' && custMenu.length===0){
+      custFilter = myRecommendedLevel;
+      document.querySelectorAll('.filter-chip').forEach(c=>c.classList.toggle('active', c.dataset.lv===myRecommendedLevel));
+    }
+    renderCustList(); renderMyMenu();
+  }
+  if(tab==='journal'){ renderLogs(); buildExerciseDatalist(); }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+function selectCare(id, btn){
+  document.querySelectorAll('.care-card').forEach(c=>c.classList.remove('selected'));
+  btn.classList.add('selected');
+  const d = CARE_DATA[id];
+  const c = CARE.find(x=>x.id===id);
+  const results = document.getElementById('care-results');
+  const totalTime = d.exercises.reduce((s,e)=>s+(parseInt(e.time)||0),0);
+  results.innerHTML = `
+    <div class="results-header">
+      <span class="results-title">${c.icon} ${c.name}</span>
+      <span class="results-count">${d.exercises.length} STEPS ・ 約${totalTime}分</span>
+    </div>
+    <div class="plan-summary"><strong>ねらい：</strong>${d.summary}</div>`;
+  const cards = document.createElement('div');
+  renderCards(cards, d.exercises, 'muscle');
+  results.appendChild(cards);
+  results.classList.add('visible');
+  results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function toggleMuscle(id) {
+  const btns = document.querySelectorAll('.muscle-btn');
+  const idx = MUSCLES.findIndex(m=>m.id===id);
+  if(selectedMuscles.has(id)) selectedMuscles.delete(id);
+  else selectedMuscles.add(id);
+  btns[idx].classList.toggle('selected', selectedMuscles.has(id));
+  document.getElementById('muscle-btn').disabled = selectedMuscles.size===0;
+}
+
+function selectSymptom(id) {
+  selectedSymptom = id;
+  document.querySelectorAll('.symptom-btn').forEach(b=>b.classList.remove('selected'));
+  const idx = SYMPTOMS.findIndex(s=>s.id===id);
+  document.querySelectorAll('.symptom-btn')[idx].classList.add('selected');
+  document.getElementById('symptom-btn').disabled = false;
+}
+
+function renderCards(container, exercises, type) {
+  container.innerHTML = exercises.map(ex=>{
+    const inWorkout = workoutQueue.some(w=>w.name===ex.name);
+    const safeName = encodeURIComponent(ex.name);
+    return `
+    <div class="exercise-card ${type}">
+      <div class="card-top" onclick="toggleCard(this.closest('.exercise-card'))">
+        <div>
+          <div class="ex-name">${ex.name}</div>
+          <div class="ex-target ${type==='symptom'?'red':''}">${ex.target}</div>
+          <div class="ex-badges">
+            ${ex.level?`<span class="badge">難易度: ${ex.level}</span>`:''}
+            ${ex.equipment?`<span class="badge">🛠 ${ex.equipment}</span>`:''}
+            ${ex.time?`<span class="badge">⏱ ${ex.time}</span>`:''}
+          </div>
+        </div>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="ex-detail">
+        <p class="ex-howto"><strong>やり方：</strong>${ex.description}</p>
+        ${ex.formPoints&&ex.formPoints.length?`
+          <div class="form-points">
+            <div class="fp-title">✓ 正しいフォームのポイント</div>
+            <ul>${ex.formPoints.map(p=>`<li>${p}</li>`).join('')}</ul>
+          </div>`:''}
+        <div class="ex-sets">
+          <div class="set-box">${ex.sets}<span>セット数</span></div>
+          <div class="set-box">${ex.reps}<span>回数 / 秒</span></div>
+          ${ex.rest&&ex.rest!=='なし'?`<div class="set-box">${ex.rest}<span>休憩</span></div>`:''}
+        </div>
+        ${ex.caution?`<p class="caution-text">⚠ ${ex.caution}</p>`:''}
+        <button class="to-workout-btn ${inWorkout?'added':''}" onclick="event.stopPropagation(); toggleWorkoutItem(decodeURIComponent('${safeName}'), this)">
+          ${inWorkout?'✓ ワークアウトに追加済み':'＋ ワークアウトに追加'}
+        </button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function toggleCard(card) {
+  card.classList.toggle('open');
+  card.querySelector('.ex-detail').classList.toggle('open');
+}
+
+// result filter state (難易度・器具) — shared, applied on the muscle tab
+let resultFilters = { lv:'all', eq:'all' };
+
+function setResultFilter(grp, val){
+  resultFilters[grp] = val;
+  document.querySelectorAll(`.filter-chip[data-grp="${grp}"]`).forEach(c=>c.classList.toggle('active', c.dataset.val===val));
+  // live re-generate if results already shown
+  if(document.getElementById('muscle-results').classList.contains('visible') && selectedMuscles.size>0){
+    generateMuscle();
+  }
+}
+
+function eqMatch(equipment, filter){
+  if(filter==='all') return true;
+  if(filter==='自重') return equipment.includes('自重') || equipment==='なし' || equipment.includes('壁');
+  return equipment.includes(filter);
+}
+
+function generateMuscle() {
+  const sel = MUSCLES.filter(m=>selectedMuscles.has(m.id));
+  const results = document.getElementById('muscle-results');
+  
+  // Collect exercises from all selected muscles
+  let allEx = [];
+  let summaries = [];
+  sel.forEach(m=>{
+    const d = MUSCLE_DATA[m.id];
+    if(d){ allEx.push(...d.exercises); summaries.push(d.summary); }
+  });
+  // Deduplicate by name
+  const seen = new Set();
+  allEx = allEx.filter(e=>{ if(seen.has(e.name)) return false; seen.add(e.name); return true; });
+  // Apply 難易度・器具 filters
+  allEx = allEx.filter(e=> levelMatch(e.level, resultFilters.lv) && eqMatch(e.equipment, resultFilters.eq));
+
+  if(allEx.length===0){
+    results.innerHTML = `
+      <div class="results-header"><span class="results-title">YOUR MENU</span><span class="results-count">0 EXERCISES</span></div>
+      <div class="empty-state">選択した条件に合う種目が見つかりませんでした。<br>難易度や器具の絞り込みを緩めてみてください。</div>`;
+    results.classList.add('visible');
+    return;
+  }
+  // Shuffle and limit
+  allEx = allEx.sort(()=>Math.random()-0.5).slice(0,Math.min(allEx.length,8));
+
+  const summary = sel.length===1
+    ? MUSCLE_DATA[sel[0].id]?.summary
+    : `${sel.map(m=>m.label).join('・')}を同時に鍛えるコンビネーションメニューです。各部位への刺激が効率よく入るよう種目を選択しています。`;
+
+  results.innerHTML = `
+    <div class="results-header">
+      <span class="results-title">YOUR MENU</span>
+      <span class="results-count">${allEx.length} EXERCISES</span>
+    </div>
+    <div class="plan-summary"><strong>プラン概要：</strong>${summary}</div>`;
+  const cards = document.createElement('div');
+  renderCards(cards, allEx, 'muscle');
+  results.appendChild(cards);
+  results.classList.add('visible');
+  results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function generateSymptom() {
+  if(!selectedSymptom) return;
+  const d = SYMPTOM_DATA[selectedSymptom];
+  const s = SYMPTOMS.find(x=>x.id===selectedSymptom);
+  const results = document.getElementById('symptom-results');
+  results.innerHTML = `
+    <div class="results-header">
+      <span class="results-title" style="color:var(--accent2)">${s.name} CARE</span>
+      <span class="results-count">${d.exercises.length} EXERCISES</span>
+    </div>
+    <div class="plan-summary"><strong>改善アプローチ：</strong>${d.summary}</div>`;
+  const cards = document.createElement('div');
+  renderCards(cards, d.exercises, 'symptom');
+  results.appendChild(cards);
+  results.classList.add('visible');
+  results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+// ========== ④ カスタマイズモード ==========
+// Flatten all exercises with muscle label
+const muscleLabelMap = Object.fromEntries(MUSCLES.map(m=>[m.id,m.label]));
+let ALL_EXERCISES = [];
+(function(){
+  const seen = new Set();
+  Object.keys(MUSCLE_DATA).forEach(mid=>{
+    MUSCLE_DATA[mid].exercises.forEach(ex=>{
+      const key = ex.name;
+      if(seen.has(key)) return;
+      seen.add(key);
+      ALL_EXERCISES.push({...ex, muscle: muscleLabelMap[mid]||mid, muscleId: mid});
+    });
+  });
+})();
+
+let custFilter = 'all';
+let custMenu = []; // array of exercise objects
+
+function setCustFilter(lv){
+  custFilter = lv;
+  document.querySelectorAll('.filter-chip').forEach(c=>c.classList.toggle('active', c.dataset.lv===lv));
+  renderCustList();
+}
+
+function levelMatch(exLevel, filter){
+  if(filter==='all') return true;
+  return exLevel.includes(filter); // 「初級〜中級」等にも対応
+}
+
+function renderCustList(){
+  const q = (document.getElementById('cust-search').value||'').trim().toLowerCase();
+  const list = ALL_EXERCISES.filter(ex=>{
+    if(!levelMatch(ex.level, custFilter)) return false;
+    if(q && !(ex.name.toLowerCase().includes(q) || ex.muscle.toLowerCase().includes(q) || ex.target.toLowerCase().includes(q))) return false;
+    return true;
+  });
+  const container = document.getElementById('cust-list');
+  if(list.length===0){ container.innerHTML = `<div class="empty-state">該当する種目がありません</div>`; return; }
+  container.innerHTML = list.map(ex=>{
+    const added = custMenu.some(m=>m.name===ex.name);
+    return `<div class="cust-card ${added?'added':''}">
+      <div class="cc-info">
+        <div class="cc-name">${ex.name}</div>
+        <div class="cc-meta"><span class="lv">${ex.level}</span> ・ ${ex.muscle} ・ ${ex.equipment} ・ ${ex.sets}セット×${ex.reps}</div>
+      </div>
+      <button class="add-btn ${added?'remove':''}" onclick="toggleCustItem('${ex.name.replace(/'/g,"\\'")}')">${added?'−':'+'}</button>
+    </div>`;
+  }).join('');
+}
+
+function toggleCustItem(name){
+  const idx = custMenu.findIndex(m=>m.name===name);
+  if(idx>=0) custMenu.splice(idx,1);
+  else { const ex = ALL_EXERCISES.find(e=>e.name===name); if(ex) custMenu.push(ex); }
+  renderCustList(); renderMyMenu();
+}
+
+function renderMyMenu(){
+  const el = document.getElementById('my-menu');
+  const totalTime = custMenu.reduce((s,e)=>s+(parseInt(e.time)||0),0);
+  el.innerHTML = `
+    <div class="mm-head">
+      <span class="mm-title">MY MENU</span>
+      <span class="results-count">${custMenu.length} 種目 ・ 約${totalTime}分</span>
+    </div>
+    ${custMenu.length===0
+      ? `<div class="mm-empty">下から種目を「＋」で追加して、自分だけのメニューを組み立てましょう。</div>`
+      : custMenu.map(e=>`<div class="mm-item">
+          <span>${e.name} <span style="color:var(--muted);font-size:0.72rem;">(${e.level}・${e.muscle})</span></span>
+          <span class="mm-x" onclick="toggleCustItem('${e.name.replace(/'/g,"\\'")}')">✕</span>
+        </div>`).join('')
+    }
+    ${custMenu.length>0 ? `<button class="mm-start-btn" onclick="startCustomMenuWorkout()">▶ このメニューをタイマーで実行</button>` : ''}`;
+}
+
+// カスタマイズで組んだメニューをそのままワークアウト（タイマー）へ
+function startCustomMenuWorkout(){
+  if(custMenu.length===0) return;
+  workoutQueue = custMenu.slice(); // copy
+  updateFab();
+  openWorkoutReview();
+}
+
+// ========== ⑤ 筋トレ日誌モード ==========
+const LOG_KEY = 'muscle_nav_logs';
+function loadLogs(){ try{ return JSON.parse(localStorage.getItem(LOG_KEY))||[]; }catch(e){ return []; } }
+function saveLogs(logs){ localStorage.setItem(LOG_KEY, JSON.stringify(logs)); }
+
+function buildExerciseDatalist(){
+  const dl = document.getElementById('exercise-names');
+  dl.innerHTML = ALL_EXERCISES.map(e=>`<option value="${e.name}">`).join('');
+}
+
+function addLog(){
+  const date = document.getElementById('log-date').value;
+  const name = document.getElementById('log-name').value.trim();
+  const weight = document.getElementById('log-weight').value;
+  const reps = document.getElementById('log-reps').value;
+  const sets = document.getElementById('log-sets').value;
+  const note = document.getElementById('log-note').value.trim();
+  if(!date || !name){ alert('日付と種目名を入力してください'); return; }
+  const logs = loadLogs();
+  logs.push({id:Date.now(), date, name, weight, reps, sets, note});
+  saveLogs(logs);
+  // clear inputs (keep date)
+  document.getElementById('log-name').value='';
+  document.getElementById('log-weight').value='';
+  document.getElementById('log-reps').value='';
+  document.getElementById('log-sets').value='';
+  document.getElementById('log-note').value='';
+  renderLogs();
+}
+
+function deleteLog(id){
+  if(!confirm('この記録を削除しますか？')) return;
+  saveLogs(loadLogs().filter(l=>l.id!==id));
+  renderLogs();
+}
+
+function renderLogs(){
+  const logs = loadLogs().sort((a,b)=> b.date.localeCompare(a.date) || b.id-a.id);
+  // stats
+  const totalSessions = new Set(logs.map(l=>l.date)).size;
+  const totalEntries = logs.length;
+  const totalVolume = logs.reduce((s,l)=> s + (parseFloat(l.weight)||0)*(parseInt(l.reps)||0)*(parseInt(l.sets)||0), 0);
+  document.getElementById('log-stats').innerHTML = `
+    <div class="stat-box"><div class="st-num">${totalSessions}</div><div class="st-label">トレ日数</div></div>
+    <div class="stat-box"><div class="st-num">${totalEntries}</div><div class="st-label">記録数</div></div>
+    <div class="stat-box"><div class="st-num">${totalVolume.toLocaleString()}</div><div class="st-label">総挙上量(kg)</div></div>`;
+  const list = document.getElementById('log-list');
+  if(logs.length===0){ list.innerHTML = `<div class="empty-state">まだ記録がありません。<br>上のフォームから最初のトレーニングを記録しましょう。</div>`; return; }
+  list.innerHTML = logs.map(l=>{
+    const tags = [];
+    if(l.weight) tags.push(`${l.weight}kg`);
+    if(l.reps) tags.push(`${l.reps}回`);
+    if(l.sets) tags.push(`${l.sets}セット`);
+    const vol = (parseFloat(l.weight)||0)*(parseInt(l.reps)||0)*(parseInt(l.sets)||0);
+    if(vol) tags.push(`計${vol.toLocaleString()}kg`);
+    return `<div class="log-entry">
+      <div class="le-top">
+        <span class="le-date">${l.date.replace(/-/g,'.')}</span>
+        <span class="le-x" onclick="deleteLog(${l.id})">✕</span>
+      </div>
+      <div class="le-body">
+        <strong>${l.name}</strong><br>
+        ${tags.map(t=>`<span class="le-tag">${t}</span>`).join('')}
+        ${l.note?`<div class="le-note">📝 ${l.note}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// init defaults
+(function(){
+  const today = new Date().toISOString().slice(0,10);
+  const d = document.getElementById('log-date');
+  if(d) d.value = today;
+})();
+
+// ========== ワークアウト & タイマー ==========
+// 全データ（筋肉・症状・セルフケア）を名前で引けるルックアップを構築
+const EXERCISE_LOOKUP = {};
+(function(){
+  const add = (ex, group)=>{ if(!EXERCISE_LOOKUP[ex.name]) EXERCISE_LOOKUP[ex.name] = {...ex, group}; };
+  Object.values(MUSCLE_DATA).forEach(d=>d.exercises.forEach(e=>add(e,'muscle')));
+  Object.values(SYMPTOM_DATA).forEach(d=>d.exercises.forEach(e=>add(e,'symptom')));
+  Object.values(CARE_DATA).forEach(d=>d.exercises.forEach(e=>add(e,'care')));
+})();
+
+let workoutQueue = []; // [{name, sets, reps, ...}]
+
+function toggleWorkoutItem(name, btn){
+  const idx = workoutQueue.findIndex(w=>w.name===name);
+  if(idx>=0){
+    workoutQueue.splice(idx,1);
+    if(btn){ btn.classList.remove('added'); btn.textContent='＋ ワークアウトに追加'; }
+  } else {
+    const ex = EXERCISE_LOOKUP[name];
+    if(ex){ workoutQueue.push(ex); if(btn){ btn.classList.add('added'); btn.textContent='✓ ワークアウトに追加済み'; } }
+  }
+  updateFab();
+}
+
+function updateFab(){
+  const fab = document.getElementById('workout-fab');
+  document.getElementById('wf-count').textContent = workoutQueue.length;
+  fab.classList.toggle('visible', workoutQueue.length>0);
+}
+
+function clearWorkout(){
+  workoutQueue = [];
+  updateFab();
+  // refresh any visible add-buttons
+  document.querySelectorAll('.to-workout-btn.added').forEach(b=>{ b.classList.remove('added'); b.textContent='＋ ワークアウトに追加'; });
+}
+
+// ----- 開始前レビュー画面 -----
+// タイマー方式: 'normal'（通常式）/ 'method37'（3/7式）
+let selectedTimerMode = 'normal';
+// 固定タイミング（仕様どおり）
+const TIMER_PRESET = {
+  normal:   { work:30, setRest:15, exRest:60 },
+  method37: { holds:[3,4,5,6,7], miniRest:15, setRest:15, exRest:60 },
+};
+
+function selectTimerMode(mode, btn){
+  selectedTimerMode = mode;
+  document.querySelectorAll('.mode-opt').forEach(o=>o.classList.remove('selected'));
+  if(btn) btn.classList.add('selected');
+}
+
+function openWorkoutReview(){
+  if(workoutQueue.length===0) return;
+  const overlay = document.getElementById('timer-overlay');
+  const main = document.getElementById('timer-main');
+  document.getElementById('th-progress').textContent = 'ワークアウトの確認';
+  document.getElementById('timer-progress-fill').style.width = '0%';
+  main.innerHTML = `
+    <div class="workout-review">
+      <div style="text-align:center;margin-bottom:1rem;">
+        <div class="timer-phase">READY TO START</div>
+        <div style="font-size:0.85rem;color:#aaa;">${workoutQueue.length}種目・タイマーで自動進行します</div>
+      </div>
+      ${workoutQueue.map((w,i)=>`
+        <div class="wr-item">
+          <div>
+            <div class="wr-name">${i+1}. ${w.name}</div>
+            <div class="wr-meta">${w.level} ・ 🛠 ${w.equipment}</div>
+          </div>
+          <span class="wr-x" onclick="removeFromReview(${i})">✕</span>
+        </div>`).join('')}
+      <div class="mode-select">
+        <div class="ms-label">タイマー方式を選ぶ</div>
+        <button class="mode-opt ${selectedTimerMode==='normal'?'selected':''}" onclick="selectTimerMode('normal', this)">
+          <div class="mo-name"><span class="mo-radio"></span>① 通常式</div>
+          <div class="mo-desc">30秒運動 → 15秒休憩 を3セット繰り返し、種目間に60秒休憩を挟んで次の種目へ。</div>
+        </button>
+        <button class="mode-opt ${selectedTimerMode==='method37'?'selected':''}" onclick="selectTimerMode('method37', this)">
+          <div class="mo-name"><span class="mo-radio"></span>② 3/7式</div>
+          <div class="mo-desc">1セット＝3→4→5→6→7秒の保持（間に15秒休憩）。セット間15秒で3セット、種目間60秒休憩で次の種目へ。</div>
+        </button>
+      </div>
+      <div class="timer-controls">
+        <button class="timer-btn" onclick="closeTimer()">戻る</button>
+        <button class="timer-btn primary" onclick="beginWorkout()">▶ 開始する</button>
+      </div>
+    </div>`;
+  overlay.classList.add('visible');
+  document.body.style.overflow='hidden';
+}
+
+function removeFromReview(i){
+  workoutQueue.splice(i,1);
+  updateFab();
+  if(workoutQueue.length===0){ closeTimer(); clearWorkout(); return; }
+  openWorkoutReview();
+}
+
+// ----- タイマー本体 -----
+let timerState = null;
+let timerInterval = null;
+
+function parseRepCount(reps){
+  // "10〜12回" -> 12, "30秒" -> 時間系, "限界まで" -> 10, "21回（7+7+7）" -> 21
+  const r = String(reps);
+  const secMatch = r.match(/(\d+)\s*秒/);
+  if(secMatch && !/回/.test(r.split('秒')[1]||'')) return { type:'time', value:parseInt(secMatch[1]) };
+  // 「○○回」の直前の数字を優先（例: 21回（7+7+7）→ 21）
+  const repMatch = r.match(/(\d+)\s*回/);
+  if(repMatch) return { type:'reps', value:parseInt(repMatch[1]) };
+  if(secMatch) return { type:'time', value:parseInt(secMatch[1]) };
+  const nums = r.match(/\d+/g);
+  if(nums) return { type:'reps', value:parseInt(nums[nums.length-1]) };
+  return { type:'reps', value:10 };
+}
+
+function beginWorkout(){
+  const SETS = 3; // 仕様どおり3セット固定
+  const steps = [];
+  const lastEx = workoutQueue.length - 1;
+
+  workoutQueue.forEach((ex, ei)=>{
+    if(selectedTimerMode==='normal'){
+      const P = TIMER_PRESET.normal; // work30 / setRest15 / exRest60
+      for(let s=1; s<=SETS; s++){
+        steps.push({ kind:'work', ex, set:s, totalSets:SETS, duration:P.work, label:`${P.work}秒運動` });
+        const isLastSet = (s===SETS);
+        if(isLastSet){
+          if(ei!==lastEx) steps.push({ kind:'rest', ex, duration:P.exRest, label:'種目間休憩', nextLabel: workoutQueue[ei+1].name });
+        } else {
+          steps.push({ kind:'rest', ex, duration:P.setRest, label:'セット間休憩', nextLabel:`${ex.name}（セット${s+1}）` });
+        }
+      }
+    } else {
+      // 3/7式: 1セット = 3→4→5→6→7秒保持（間に15秒休憩）
+      const P = TIMER_PRESET.method37;
+      for(let s=1; s<=SETS; s++){
+        P.holds.forEach((h, hi)=>{
+          steps.push({ kind:'hold', ex, set:s, totalSets:SETS, duration:h, label:`${h}秒キープ`, holdIdx:hi+1, holdTotal:P.holds.length });
+          // 各保持の間に15秒休憩（最後の7秒保持の後は入れない）
+          if(hi < P.holds.length-1){
+            steps.push({ kind:'rest', ex, duration:P.miniRest, label:'インターバル', nextLabel:`${P.holds[hi+1]}秒キープ` });
+          }
+        });
+        const isLastSet = (s===SETS);
+        if(isLastSet){
+          if(ei!==lastEx) steps.push({ kind:'rest', ex, duration:P.exRest, label:'種目間休憩', nextLabel: workoutQueue[ei+1].name });
+        } else {
+          steps.push({ kind:'rest', ex, duration:P.setRest, label:'セット間休憩', nextLabel:`${ex.name}（セット${s+1}）` });
+        }
+      }
+    }
+  });
+
+  if(steps.length===0) return;
+  timerState = { steps, idx:0, remaining:steps[0].duration, paused:false, startTime:Date.now(), mode:selectedTimerMode };
+  renderTimerStep();
+  startTick();
+}
+
+function startTick(){
+  clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    if(!timerState || timerState.paused) return;
+    timerState.remaining--;
+    if(timerState.remaining<=0){
+      nextStep();
+    } else {
+      updateTimerDisplay();
+    }
+  }, 1000);
+}
+
+function nextStep(){
+  if(!timerState) return;
+  timerState.idx++;
+  if(timerState.idx >= timerState.steps.length){
+    finishWorkout();
+    return;
+  }
+  // 次が運動/保持なら「開始」音、休憩なら「休憩」音
+  const nextKind = timerState.steps[timerState.idx].kind;
+  beep(nextKind==='rest' ? 'rest' : 'work');
+  timerState.remaining = timerState.steps[timerState.idx].duration;
+  renderTimerStep();
+}
+
+function renderTimerStep(){
+  const st = timerState.steps[timerState.idx];
+  const totalSteps = timerState.steps.length;
+  document.getElementById('th-progress').textContent = `ステップ ${timerState.idx+1} / ${totalSteps}`;
+  document.getElementById('timer-progress-fill').style.width = `${(timerState.idx/totalSteps)*100}%`;
+  const main = document.getElementById('timer-main');
+  const isRest = st.kind==='rest';
+  const isHold = st.kind==='hold';
+  const fp = st.ex.formPoints||[];
+  const ringClass = isRest ? 'rest' : (isHold ? 'hold' : '');
+  const phaseClass = isRest ? 'rest' : (isHold ? 'hold' : '');
+  const phaseLabel = isRest ? `REST ${st.label||'休憩'}` : (isHold ? `HOLD 保持` : `WORK 運動`);
+  // meta line
+  let meta;
+  if(isRest){
+    meta = st.nextLabel ? `次は ${st.nextLabel}` : '休憩';
+  } else if(isHold){
+    meta = `セット ${st.set} / ${st.totalSets} ・ ${st.holdIdx}/${st.holdTotal}本目 ・ ${st.duration}秒キープ`;
+  } else {
+    meta = `セット ${st.set} / ${st.totalSets} ・ ${st.label}`;
+  }
+  main.innerHTML = `
+    <div class="timer-phase ${phaseClass}">${phaseLabel}</div>
+    <div class="timer-ex-name">${st.ex.name}</div>
+    <div class="timer-ex-meta">${meta}</div>
+    <div class="timer-ring ${ringClass}">
+      <svg width="240" height="240" viewBox="0 0 240 240">
+        <circle class="ring-bg" cx="120" cy="120" r="108"></circle>
+        <circle class="ring-fg" id="ring-fg" cx="120" cy="120" r="108"
+          stroke-dasharray="${2*Math.PI*108}" stroke-dashoffset="0"></circle>
+      </svg>
+      <div class="timer-count">
+        <span class="tc-num" id="tc-num">${timerState.remaining}</span>
+        <span class="tc-sub">秒</span>
+      </div>
+    </div>
+    ${(!isRest && fp.length)?`
+      <div class="timer-formpts">
+        <div class="tf-title">✓ フォームのポイント</div>
+        <ul>${fp.map(p=>`<li>${p}</li>`).join('')}</ul>
+      </div>`:''}
+    <div class="timer-controls">
+      <button class="timer-btn" id="pause-btn" onclick="togglePause()">⏸ 一時停止</button>
+      <button class="timer-btn" onclick="skipStep()">⏭ スキップ</button>
+      <button class="timer-btn danger" onclick="stopWorkout()">■ 中止</button>
+    </div>`;
+  updateTimerDisplay();
+}
+
+function updateTimerDisplay(){
+  const st = timerState.steps[timerState.idx];
+  const num = document.getElementById('tc-num');
+  if(num) num.textContent = timerState.remaining;
+  const ring = document.getElementById('ring-fg');
+  if(ring){
+    const circ = 2*Math.PI*108;
+    const frac = timerState.remaining / st.duration;
+    ring.style.strokeDashoffset = circ*(1-frac);
+  }
+}
+
+function togglePause(){
+  if(!timerState) return;
+  timerState.paused = !timerState.paused;
+  const btn = document.getElementById('pause-btn');
+  if(btn) btn.textContent = timerState.paused ? '▶ 再開' : '⏸ 一時停止';
+}
+
+function skipStep(){ if(timerState) nextStep(); }
+
+function stopWorkout(){
+  if(confirm('ワークアウトを中止しますか？（途中までの記録は保存されません）')){
+    clearInterval(timerInterval);
+    timerState = null;
+    closeTimer();
+  }
+}
+
+function finishWorkout(){
+  clearInterval(timerInterval);
+  beep('finish');
+  const elapsedMin = Math.round((Date.now()-timerState.startTime)/60000);
+  const mode = timerState.mode || selectedTimerMode;
+  const modeLabel = mode==='method37' ? '3/7式' : '通常式';
+  const repsLabel = mode==='method37' ? '3→4→5→6→7秒保持' : '30秒×3';
+  // 自動で日誌に記録
+  const today = new Date().toISOString().slice(0,10);
+  const logs = loadLogs();
+  workoutQueue.forEach(ex=>{
+    logs.push({
+      id: Date.now()+Math.floor(Math.random()*1000),
+      date: today,
+      name: ex.name,
+      weight: '',
+      reps: repsLabel,
+      sets: '3',
+      note: `タイマー（${modeLabel}）で実施（自動記録）`
+    });
+  });
+  saveLogs(logs);
+
+  document.getElementById('th-progress').textContent = '完了！';
+  document.getElementById('timer-progress-fill').style.width = '100%';
+  const main = document.getElementById('timer-main');
+  main.innerHTML = `
+    <div style="text-align:center;">
+      <div class="timer-phase">🎉 WORKOUT COMPLETE</div>
+      <div class="timer-ex-name" style="margin:1rem 0;">お疲れさまでした！</div>
+      <div class="timer-ex-meta">${workoutQueue.length}種目 ・ ${modeLabel} ・ 約${elapsedMin}分<br>結果は「筋トレ日誌」に自動で記録されました。</div>
+      <div class="timer-controls" style="margin-top:2rem;">
+        <button class="timer-btn primary" onclick="closeTimer(); clearWorkout(); switchTab('journal');">記録を見る</button>
+      </div>
+    </div>`;
+  timerState = null;
+}
+
+function closeTimer(){
+  clearInterval(timerInterval);
+  document.getElementById('timer-overlay').classList.remove('visible');
+  document.body.style.overflow='';
+}
+
+// シンプルな音／バイブのキュー
+function beep(type){
+  try {
+    if(navigator.vibrate){ navigator.vibrate(type==='finish'?[200,100,200]:150); }
+    const ctx = beep._ctx || (beep._ctx = new (window.AudioContext||window.webkitAudioContext)());
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.frequency.value = type==='work'?660:(type==='finish'?880:440);
+    g.gain.value = 0.1;
+    o.start(); o.stop(ctx.currentTime+0.18);
+  } catch(e){}
+}
+</script>
+</body>
+</html>

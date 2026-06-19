@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>東洋医学 弁証支援アプリ 使用説明書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Noto+Serif+JP:wght@400;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:   #1e3a4f;
+  --primary:#2c5f7c;
+  --mid:    #5a8fa8;
+  --light:  #eef4f8;
+  --gold:   #c8963e;
+  --gold-lt:#fdf3e2;
+  --green:  #3d9970;
+  --green-lt:#e8f5ee;
+  --amber:  #e09b2d;
+  --amber-lt:#fff8e1;
+  --red:    #c0392b;
+  --red-lt: #fdf0ee;
+  --purple: #5e35b1;
+  --purple-lt:#ede7f6;
+  --text:   #1a2a35;
+  --muted:  #5a7080;
+  --border: #d0dce5;
+  --bg:     #f5f8fa;
+  --white:  #ffffff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Noto Sans JP',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.85;
+  font-size:14px;
+}
+
+/* ========== COVER ========== */
+.cover{
+  min-height:100vh;
+  background:linear-gradient(160deg,#0f2333 0%,#1e3a4f 40%,#2c5f7c 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:80px 40px;position:relative;overflow:hidden;
+}
+.cover::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%,rgba(90,143,168,.12) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(200,150,62,.08) 0%,transparent 60%);
+}
+/* 格子模様 */
+.cover::after{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.cover-inner{position:relative;z-index:1;max-width:640px}
+.cover-eyebrow{
+  display:inline-block;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:20px;padding:5px 20px;
+  font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.7);
+  margin-bottom:32px;font-family:'DM Mono',monospace;
+}
+.cover h1{
+  font-family:'Noto Serif JP',serif;
+  font-size:44px;font-weight:700;line-height:1.25;
+  color:#fff;margin-bottom:16px;letter-spacing:1px;
+}
+.cover h1 em{color:#7ec8e3;font-style:normal}
+.cover-sub{font-size:15px;color:rgba(255,255,255,.65);margin-bottom:10px}
+.cover-ver{
+  display:block;text-align:center;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  border-radius:6px;padding:4px 16px;font-size:12px;
+  font-family:'DM Mono',monospace;color:rgba(255,255,255,.8);
+  margin:0 auto 48px;letter-spacing:1px;width:fit-content;
+}
+.cover-chips{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:48px;max-width:440px;margin-left:auto;margin-right:auto;
+}
+.chip{
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;padding:10px 18px;font-size:12px;color:rgba(255,255,255,.85);
+}
+.chip strong{display:block;font-size:14px;margin-bottom:2px;color:#fff}
+.cover-credits{
+  font-size:12px;color:rgba(255,255,255,.45);line-height:2;
+  border-top:1px solid rgba(255,255,255,.1);padding-top:20px;margin-top:0;
+}
+
+/* ========== 大外ラッパー ========== */
+.wrap{max-width:900px;margin:0 auto;padding:0 32px}
+
+/* ========== 目次 ========== */
+.toc-section{background:var(--navy);color:#fff;padding:60px 0}
+.toc-section .wrap{}
+.toc-section h2{font-size:13px;letter-spacing:3px;font-family:'DM Mono',monospace;color:var(--mid);margin-bottom:28px;text-transform:uppercase}
+.toc-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:4px;
+}
+.toc-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-radius:8px;
+  text-decoration:none;color:rgba(255,255,255,.75);
+  transition:background .2s,color .2s;font-size:13px;
+}
+.toc-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.toc-num{
+  width:26px;height:26px;border-radius:6px;
+  background:rgba(90,143,168,.3);color:var(--mid);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;
+}
+
+/* ========== セクション共通 ========== */
+.section{padding:72px 0;border-bottom:1px solid var(--border)}
+.section-header{
+  display:flex;align-items:flex-start;gap:20px;margin-bottom:36px;
+}
+.sec-num{
+  width:56px;height:56px;border-radius:14px;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;flex-shrink:0;
+  font-family:'DM Mono',monospace;
+  box-shadow:0 4px 16px rgba(44,95,124,.3);
+}
+.section-header-text{}
+.section-header-text h2{font-size:26px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.section-header-text p{font-size:13px;color:var(--muted)}
+
+/* ========== SVGイラストエリア ========== */
+.svg-wrap{
+  display:flex;justify-content:center;margin:32px 0;
+}
+.svg-wrap svg{max-width:100%;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1)}
+
+/* ========== Callout ========== */
+.callout{
+  display:flex;gap:14px;border-radius:12px;padding:16px 20px;margin:20px 0;
+}
+.callout-info  {background:var(--light);border-left:4px solid var(--primary)}
+.callout-warn  {background:var(--amber-lt);border-left:4px solid var(--amber)}
+.callout-tip   {background:var(--green-lt);border-left:4px solid var(--green)}
+.callout-purple{background:var(--purple-lt);border-left:4px solid var(--purple)}
+.callout-red   {background:var(--red-lt);border-left:4px solid var(--red)}
+.callout .ico{font-size:22px;flex-shrink:0;margin-top:1px}
+.callout .body h4{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--navy)}
+.callout .body p{font-size:13px;color:var(--muted);line-height:1.75}
+.callout .body p a{color:var(--primary)}
+
+/* ========== ステップ ========== */
+.steps{display:flex;flex-direction:column;gap:14px;margin:20px 0}
+.step{
+  display:flex;gap:16px;background:var(--white);
+  border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.step-n{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;flex-shrink:0;margin-top:1px;
+  font-family:'DM Mono',monospace;
+}
+.step-body h4{font-size:14px;font-weight:700;color:var(--primary);margin-bottom:5px}
+.step-body p{font-size:13px;color:var(--muted);line-height:1.75}
+
+/* ========== モードカード ========== */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}
+.mode-card{
+  background:var(--white);border:1px solid var(--border);
+  border-radius:14px;padding:22px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+  position:relative;overflow:hidden;
+}
+.mode-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+}
+.mode-card.c1::before{background:linear-gradient(90deg,var(--primary),var(--mid))}
+.mode-card.c2::before{background:linear-gradient(90deg,var(--green),#6dbf8f)}
+.mode-card.c3::before{background:linear-gradient(90deg,var(--gold),#e8b86a)}
+.mode-card.c4::before{background:linear-gradient(90deg,var(--purple),#8b6bd8)}
+.mode-icon{font-size:32px;margin-bottom:10px}
+.mode-card h3{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:8px}
+.mode-card p{font-size:12px;color:var(--muted);line-height:1.75}
+.tag{
+  display:inline-block;font-size:10px;padding:2px 10px;
+  border-radius:10px;margin-top:10px;font-weight:700;
+}
+.tag-blue  {background:var(--light);color:var(--primary)}
+.tag-green {background:var(--green-lt);color:var(--green)}
+.tag-gold  {background:var(--gold-lt);color:var(--gold)}
+.tag-purple{background:var(--purple-lt);color:var(--purple)}
+
+/* ========== テーブル ========== */
+.tbl{
+  width:100%;border-collapse:collapse;font-size:13px;
+  margin:16px 0;border-radius:12px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.tbl th{
+  background:var(--primary);color:#fff;
+  padding:10px 16px;text-align:left;font-size:12px;font-weight:600;
+}
+.tbl td{padding:10px 16px;border-bottom:1px solid var(--border)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:nth-child(even) td{background:var(--light)}
+.tbl td.r{text-align:right;font-weight:700;color:var(--primary);font-family:'DM Mono',monospace}
+
+/* ========== 忘却曲線レベルバッジ ========== */
+.lv{
+  display:inline-block;width:44px;text-align:center;
+  border-radius:6px;padding:2px 0;font-size:11px;font-weight:700;color:#fff;
+  font-family:'DM Mono',monospace;
+}
+.lv0{background:#9e9e9e}.lv1{background:#e53935}.lv2{background:#f9a825}
+.lv3{background:#7cb342}.lv4{background:#43a047}.lv5{background:#1e88e5}
+
+/* ========== 設定トグル ========== */
+.setting-card{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:16px 0}
+.setting-head{background:var(--primary);color:#fff;padding:10px 18px;font-size:13px;font-weight:700}
+.setting-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 18px;border-bottom:1px solid var(--border);
+}
+.setting-row:last-child{border-bottom:none}
+.setting-lbl{font-size:13px;font-weight:500}
+.setting-desc{font-size:11px;color:var(--muted);margin-top:1px}
+.toggle{
+  width:38px;height:22px;border-radius:11px;
+  background:var(--primary);position:relative;flex-shrink:0;
+}
+.toggle::after{
+  content:'';position:absolute;right:3px;top:3px;
+  width:16px;height:16px;border-radius:50%;background:#fff;
+}
+.toggle.off{background:#cbd5dc}
+.toggle.off::after{right:auto;left:3px}
+.badge-link{font-size:12px;color:var(--mid)}
+
+/* ========== 2カラム ========== */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+
+/* ========== スクリーンモック ========== */
+.phone-wrap{display:flex;justify-content:center;margin:24px 0}
+
+/* ========== h3 ========== */
+.sh3{
+  font-size:16px;font-weight:700;color:var(--primary);
+  margin:32px 0 14px;display:flex;align-items:center;gap:8px;
+}
+.sh3::before{
+  content:'';display:block;width:4px;height:18px;
+  border-radius:2px;background:var(--primary);flex-shrink:0;
+}
+
+/* ========== 本文 ========== */
+.prose{font-size:13px;color:var(--muted);line-height:1.85;margin-bottom:14px}
+.prose strong{color:var(--text)}
+
+/* ========== リンクリスト ========== */
+.link-list{list-style:none;margin:12px 0}
+.link-list li{padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.link-list li:last-child{border-bottom:none}
+.link-list a{color:var(--primary);word-break:break-all}
+
+/* ========== footer ========== */
+footer{
+  text-align:center;padding:48px 32px;color:var(--muted);font-size:12px;
+  border-top:1px solid var(--border);line-height:2;
+}
+footer a{color:var(--mid)}
+
+/* ========== responsive ========== */
+@media(max-width:640px){
+  .cover h1{font-size:30px}
+  .toc-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr}
+  .mode-grid{grid-template-columns:1fr}
+  .wrap{padding:0 16px}
+  .section{padding:48px 0}
+}
+</style>
+
+</head><body>
+<div class="cover"><div class="cover-inner">
+  <span class="cover-eyebrow">USER MANUAL</span>
+  <h1>東洋医学 <em>弁証</em>支援アプリ</h1>
+  <p class="cover-sub">問診から弁証鑑別・カルテまで</p>
+  <span class="cover-ver">東洋医学 学習スイート 収録アプリ</span>
+  <div class="cover-chips"><div class="chip"><strong>🩺</strong>問診→弁証→カルテ</div><div class="chip"><strong>📊</strong>弁証スコア表示</div><div class="chip"><strong>🖐️</strong>徒手検査の分岐</div><div class="chip"><strong>⚙</strong>データ編集・表示設定</div></div>
+  <div class="cover-credits">東洋医学 学習スイート<br>制作者：大阪行岡医療専門学校長柄校　鍼灸科　75期生　藤本</div>
+</div></div>
+<div class="toc-section"><div class="wrap">
+  <h2>TABLE OF CONTENTS</h2>
+  <div class="toc-grid"><a class="toc-item" href="#b1"><span class="toc-num">01</span>このアプリについて</a><a class="toc-item" href="#b2"><span class="toc-num">02</span>5つのタブの流れ</a><a class="toc-item" href="#b3"><span class="toc-num">03</span>症状入力と徒手検査</a><a class="toc-item" href="#b4"><span class="toc-num">04</span>弁証スコアの見方</a><a class="toc-item" href="#b5"><span class="toc-num">05</span>カルテの保存・検索</a><a class="toc-item" href="#b6"><span class="toc-num">06</span>データ編集・表示設定</a><a class="toc-item" href="#b7"><span class="toc-num">07</span>患者用問診表</a><a class="toc-item" href="#b8"><span class="toc-num">08</span>困ったときは</a></div>
+</div></div>
+<div class="section" id="b1"><div class="wrap">
+  <div class="section-header"><div class="sec-num">01</div>
+  <div class="section-header-text"><h2>このアプリについて</h2><p>弁証鑑別と臨床補助</p></div></div>
+  <p class="prose">「東洋医学 弁証支援アプリ」は、問診 → 症状入力 → 徒手検査 → 弁証鑑別 → 治療方針 → カルテ保存・検索 という一連の流れを支援するツールです。入力した症状から弁証パターンの候補をスコア表示し、治療穴（補・瀉）や経絡、徒手検査の判断の分岐を参考として提示します。</p><div class="callout callout-red"><div class="ico">⚠️</div><div class="body"><h4>鑑別支援ツールです</h4><p>本アプリは学習・臨床補助のための鑑別支援ツールです。表示される弁証・治療穴・検査は候補であり、確定診断ではありません。最終的な判断は必ず施術者ご自身が行ってください。</p></div></div><div class="callout callout-info"><div class="ico">🌐</div><div class="body"><h4>オンライン専用</h4><p>このアプリはオンライン専用です。起動のたびにインターネットからデータを読み込みます。なお、保存したカルテや編集内容は端末内（ブラウザ）に保持されます。</p></div></div>
+</div></div><div class="section" id="b2"><div class="wrap">
+  <div class="section-header"><div class="sec-num">02</div>
+  <div class="section-header-text"><h2>5つのタブの流れ</h2><p>① 問診 → ② 症状 → ③ 徒手検査 → ④ 弁証 → ⑤ カルテ</p></div></div>
+  <div class="steps"><div class="step"><div class="step-n">1</div><div class="step-body"><h4>① 問診表</h4><p>患者さんに記入してもらう空欄の問診表を印刷・PDF出力できます（アプリの入力欄とは別物です）。見出しや項目、載せる症状は編集できます（→6章）。</p></div></div><div class="step"><div class="step-n">2</div><div class="step-body"><h4>② 症状入力</h4><p>当てはまる症状にチェックを入れます。グループごとに整理されています。複数選択できます。</p></div></div><div class="step"><div class="step-n">3</div><div class="step-body"><h4>③ 徒手検査フロー</h4><p>痛みの部位などに応じて、該当する徒手検査・機能評価が表示されます。「実施した」検査の結果に応じて、判断の分岐（参考）が候補を示します。</p></div></div><div class="step"><div class="step-n">4</div><div class="step-body"><h4>④ 弁証・治療方針</h4><p>入力内容から弁証パターンの候補をスコア順に表示します。各候補に治法・治療穴（補=補う／瀉=瀉す／平=平補平瀉）や関連経絡が示されます。「↻ 弁証を再計算」で再計算できます。</p></div></div><div class="step"><div class="step-n">5</div><div class="step-body"><h4>⑤ カルテ</h4><p>弁証結果を患者情報とともにカルテとして保存できます。保存したカルテは検索・編集でき、CSV出力も可能です。カルテを含む全データのバックアップは統合ホームから行えます。</p></div></div></div>
+</div></div><div class="section" id="b3"><div class="wrap">
+  <div class="section-header"><div class="sec-num">03</div>
+  <div class="section-header-text"><h2>症状入力と徒手検査</h2><p>候補を導く入力</p></div></div>
+  <p class="prose">症状入力では、寒熱・精神睡眠・頭顔目・消化・泌尿生殖・呼吸・血婦人・舌脈などのグループから、該当する症状を選びます。徒手検査フローでは、痛みの部位を選ぶと関連する検査が表示され、各検査の「判断の分岐（参考）」に陽性時・陰性時の結論候補が示されます。</p><div class="callout callout-warn"><div class="ico">📝</div><div class="body"><h4>検査の分岐は参考です</h4><p>徒手検査の判断の分岐は、標準的な解釈をもとにした参考情報です。実際の臨床判断は所見全体をふまえて施術者が行ってください。</p></div></div>
+</div></div><div class="section" id="b4"><div class="wrap">
+  <div class="section-header"><div class="sec-num">04</div>
+  <div class="section-header-text"><h2>弁証スコアの見方</h2><p>候補の絞り込み</p></div></div>
+  <p class="prose">弁証パターンは、チェックした症状に応じてスコアが計算され、点数の高い順に候補として並びます。スコアはあくまで入力された症状からの目安です。複数の候補が近い点数のときは、所見全体や徒手検査の結果とあわせて鑑別してください。各候補には治法と治療穴（補・瀉・平）が示されます。</p>
+</div></div><div class="section" id="b5"><div class="wrap">
+  <div class="section-header"><div class="sec-num">05</div>
+  <div class="section-header-text"><h2>カルテの保存・検索</h2><p>記録を残す</p></div></div>
+  <div class="steps"><div class="step"><div class="step-n">1</div><div class="step-body"><h4>カルテに保存</h4><p>弁証結果を、患者名やメモとともにカルテとして保存します。</p></div></div><div class="step"><div class="step-n">2</div><div class="step-body"><h4>検索・編集</h4><p>保存したカルテは一覧から検索でき、「✎ この記録を編集」で内容を修正できます。</p></div></div><div class="step"><div class="step-n">3</div><div class="step-body"><h4>バックアップ・出力</h4><p>「CSV出力」で、保存したカルテを表計算ソフト用に書き出せます。カルテを含む全アプリのデータのバックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</p></div></div></div><div class="callout callout-tip"><div class="ico">💾</div><div class="body"><h4>データは端末内に保存</h4><p>カルテは利用者の端末内（ブラウザ）に保存されます。機種変更や他端末への移行時は、統合ホームの一括バックアップを使って引き継いでください。</p></div></div>
+</div></div><div class="section" id="b6"><div class="wrap">
+  <div class="section-header"><div class="sec-num">06</div>
+  <div class="section-header-text"><h2>データ編集・表示設定</h2><p>自分用に調整する</p></div></div>
+  <p class="prose">画面の「⚙ データ編集・表示設定」から、収録データを自分用に調整できます。編集内容はこの端末にのみ保存され、組み込みデータに重ねて表示されます。</p><div class="sh3">弁証パターンの編集</div><p class="prose">各証について、症状のスコア、症状の追加・削除、治療穴（補・瀉・平）の編集ができます。治療穴は空欄にすると自動的に除外され、空欄のままなら「編集した」とはみなされません。</p><div class="sh3">経絡・表示設定</div><p class="prose">経絡ごとの治療穴を編集できます。「表示設定」では、症状・弁証パターン・経絡・徒手検査・機能評価について、表示／非表示を切り替えられます。症状の表示設定は患者用問診表の印刷にも反映されます。</p><div class="sh3">症状の追加</div><p class="prose">「表示設定」の「症状を追加」から、新しい症状を作って任意のグループに加えられます。追加した症状は症状チェック・問診表・パターン編集の症状選択に反映されます。</p><div class="sh3">リセット</div><p class="prose">各項目には「規定値に戻す」（個別リセット）があり、画面下部の「すべての編集を規定値に戻す」で全体を初期状態に戻せます。規定値とは、そのときの組み込みデータの値です。</p><div class="callout callout-purple"><div class="ico">🔁</div><div class="body"><h4>更新との関係</h4><p>あなたが編集した項目は編集が優先され、編集していない項目はアプリ更新で最新化されます。元に戻したいときはリセットを使ってください。学習データ（カルテ）はリセットの影響を受けません。</p></div></div>
+</div></div><div class="section" id="b7"><div class="wrap">
+  <div class="section-header"><div class="sec-num">07</div>
+  <div class="section-header-text"><h2>患者用問診表</h2><p>印刷して使う</p></div></div>
+  <p class="prose">「① 問診表」タブ、または編集画面の「問診表」タブから、患者さんに記入してもらう空欄の問診表を印刷・PDF出力できます。タイトル・院名・あいさつ文・「既往・服薬など」欄の項目名を編集でき、問診表に載せる症状も選べます（問診表にだけ載せない設定も可能）。</p>
+</div></div><div class="section" id="b8"><div class="wrap">
+  <div class="section-header"><div class="sec-num">08</div>
+  <div class="section-header-text"><h2>困ったときは</h2><p>よくある質問</p></div></div>
+  <p class="prose"><strong>Q. 編集した内容が他の端末に出てこない。</strong><br>A. 編集内容はその端末にのみ保存されます。端末ごとに個別の設定になります。</p><p class="prose"><strong>Q. オフラインで使えますか。</strong><br>A. オンライン専用です。起動にはインターネット接続が必要です（保存済みのカルテ・編集データ自体は端末内に残ります）。</p><p class="prose"><strong>Q. 治療穴やスコア、検査の分岐は信頼できますか。</strong><br>A. これらは学習・臨床補助のための参考値・候補です。標準的な解釈をもとにしていますが、確定的なものではありません。臨床では施術者の判断を優先してください。</p>
+</div></div>
+<footer>東洋医学 学習スイート ／ 東洋医学 <em>弁証</em>支援アプリ<br>本アプリは学習・臨床補助用途です。表示される弁証・治療穴・検査は候補であり、確定診断ではありません。最終判断は施術者が行ってください。</footer>
+</body></html>

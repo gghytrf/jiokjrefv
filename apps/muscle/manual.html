@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MUSCLE NAVIGATOR 取扱説明書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Noto+Sans+JP:wght@400;500;700;900&family=Shippori+Mincho:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0a0a0a; --bg2:#111; --card:#161616; --border:#2a2a2a;
+  --text:#e8e8e8; --muted:#888; --accent:#e8ff00; --accent2:#ff4444;
+  --green:#4caf50;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:'Noto Sans JP',sans-serif; line-height:1.8;
+  -webkit-font-smoothing:antialiased;
+}
+/* subtle grid texture */
+body::before{
+  content:''; position:fixed; inset:0; z-index:-1; pointer-events:none;
+  background-image:linear-gradient(rgba(232,255,0,0.018) 1px,transparent 1px),
+                   linear-gradient(90deg,rgba(232,255,0,0.018) 1px,transparent 1px);
+  background-size:42px 42px;
+}
+
+/* ===== Layout ===== */
+.wrap{max-width:1180px; margin:0 auto; display:grid; grid-template-columns:248px 1fr; gap:0;}
+nav.toc{
+  position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+  padding:2.2rem 1.3rem; border-right:1px solid var(--border);
+}
+nav.toc .brand{font-family:'Bebas Neue',sans-serif; font-size:1.9rem; letter-spacing:0.04em; line-height:1; color:var(--text);}
+nav.toc .brand b{color:var(--accent);}
+nav.toc .sub{font-size:0.66rem; color:var(--muted); letter-spacing:0.18em; margin-top:0.3rem; margin-bottom:1.6rem;}
+nav.toc a{
+  display:block; color:var(--muted); text-decoration:none; font-size:0.82rem;
+  padding:0.5rem 0.7rem; border-radius:5px; border-left:2px solid transparent;
+  transition:all 0.15s;
+}
+nav.toc a:hover{color:var(--text); background:#1c1c1c;}
+nav.toc a.active{color:var(--accent); border-left-color:var(--accent); background:#16180a;}
+nav.toc a .n{font-family:'Bebas Neue',sans-serif; font-size:1rem; margin-right:0.45rem; color:var(--accent);}
+
+main{padding:0 2.4rem 6rem; min-width:0;}
+
+/* ===== Hero ===== */
+.hero{
+  padding:5rem 0 3rem; border-bottom:1px solid var(--border); margin-bottom:2.5rem;
+  position:relative;
+}
+.hero .kicker{font-family:'Bebas Neue',sans-serif; letter-spacing:0.3em; color:var(--accent); font-size:0.95rem;}
+.hero h1{
+  font-family:'Bebas Neue',sans-serif; font-size:clamp(3rem,9vw,5.5rem); line-height:0.95;
+  letter-spacing:0.02em; margin:0.5rem 0 0.3rem;
+}
+.hero .jp{font-family:'Shippori Mincho',serif; font-size:1.15rem; color:var(--muted); letter-spacing:0.15em;}
+.hero .tagline{margin-top:1.6rem; font-size:0.95rem; color:#bbb; max-width:640px;}
+.hero .chips{margin-top:1.4rem; display:flex; flex-wrap:wrap; gap:0.5rem;}
+.hero .chips span{
+  font-size:0.72rem; color:var(--accent); border:1px solid #33370a; background:#13150a;
+  padding:0.3rem 0.7rem; border-radius:20px; letter-spacing:0.05em;
+}
+.hero .ver{position:absolute; top:5rem; right:0; font-family:'Bebas Neue',sans-serif; color:var(--muted); font-size:1.1rem; letter-spacing:0.1em;}
+
+/* ===== Sections ===== */
+section{scroll-margin-top:1.5rem; padding:2.2rem 0; border-bottom:1px solid var(--border);}
+section:last-of-type{border-bottom:none;}
+.sec-head{display:flex; align-items:baseline; gap:0.9rem; margin-bottom:1.3rem;}
+.sec-head .num{font-family:'Bebas Neue',sans-serif; font-size:2.6rem; line-height:1; color:var(--accent); letter-spacing:0.02em;}
+.sec-head h2{font-size:1.55rem; font-weight:900; letter-spacing:0.01em;}
+h3{font-size:1.05rem; color:var(--accent); margin:1.6rem 0 0.7rem; font-weight:700;}
+p{margin-bottom:0.9rem; font-size:0.92rem; color:#d4d4d4;}
+strong{color:#fff;}
+
+/* lists */
+ul.feat, ol.steps{margin:0 0 1rem; padding-left:0; list-style:none;}
+ul.feat li{position:relative; padding:0.28rem 0 0.28rem 1.5rem; font-size:0.9rem; color:#d4d4d4;}
+ul.feat li::before{content:'▸'; position:absolute; left:0; color:var(--accent);}
+ol.steps{counter-reset:s;}
+ol.steps li{position:relative; padding:0.4rem 0 0.4rem 2.6rem; margin-bottom:0.3rem; font-size:0.92rem; counter-increment:s;}
+ol.steps li::before{
+  content:counter(s); position:absolute; left:0; top:0.35rem;
+  width:1.7rem; height:1.7rem; border-radius:50%; background:var(--accent); color:#000;
+  font-family:'Bebas Neue',sans-serif; font-size:1.05rem; display:flex; align-items:center; justify-content:center;
+}
+
+/* callouts */
+.box{border:1px solid var(--border); border-left:4px solid var(--accent); background:var(--card);
+  border-radius:6px; padding:1rem 1.2rem; margin:1.1rem 0;}
+.box .t{color:var(--accent); font-weight:700; font-size:0.88rem; margin-bottom:0.4rem;}
+.box.warn{border-left-color:var(--accent2);}
+.box.warn .t{color:var(--accent2);}
+.box.gray{border-left-color:var(--muted);}
+.box.gray .t{color:#aaa;}
+.box p{font-size:0.85rem; margin-bottom:0.35rem;}
+.box p:last-child{margin-bottom:0;}
+
+/* tables */
+.tbl{width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.85rem;}
+.tbl th{background:#16180a; color:var(--accent); text-align:left; padding:0.7rem 0.9rem; border:1px solid var(--border); font-weight:700;}
+.tbl td{padding:0.65rem 0.9rem; border:1px solid var(--border); color:#d4d4d4; vertical-align:top;}
+.tbl tr:nth-child(even) td{background:#121212;}
+
+/* pill grid (parts/symptoms) */
+.pills{display:flex; flex-wrap:wrap; gap:0.45rem; margin:0.8rem 0 1rem;}
+.pills span{font-size:0.78rem; background:#161616; border:1px solid var(--border); color:#cfcfcf;
+  padding:0.32rem 0.7rem; border-radius:5px;}
+.pills.red span{border-color:#3a1414;}
+
+/* card grid for care routines */
+.cards{display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:0.7rem; margin:1rem 0;}
+.cards .c{background:var(--card); border:1px solid var(--border); border-radius:6px; padding:0.9rem 1rem;}
+.cards .c .ic{font-size:1.4rem;}
+.cards .c .nm{font-weight:700; font-size:0.9rem; margin-top:0.3rem;}
+.cards .c .mt{font-size:0.7rem; color:var(--accent); margin-top:0.2rem;}
+.cards .c .ds{font-size:0.72rem; color:var(--muted); margin-top:0.25rem;}
+
+.kbd{font-family:'Bebas Neue',sans-serif; background:#000; border:1px solid var(--accent); color:var(--accent);
+  padding:0.05rem 0.5rem; border-radius:4px; font-size:0.95rem; letter-spacing:0.05em; white-space:nowrap;}
+
+footer{padding:2.5rem 0 0; text-align:center;}
+footer .end{font-family:'Shippori Mincho',serif; color:var(--accent); font-size:1.05rem; letter-spacing:0.08em;}
+footer .meta{color:var(--muted); font-size:0.72rem; margin-top:0.6rem;}
+
+/* mobile */
+.menu-btn{display:none;}
+@media(max-width:880px){
+  .wrap{grid-template-columns:1fr;}
+  nav.toc{position:fixed; top:0; left:0; width:260px; height:100vh; background:var(--bg2); z-index:100;
+    transform:translateX(-100%); transition:transform 0.25s; box-shadow:6px 0 30px rgba(0,0,0,0.6);}
+  nav.toc.open{transform:translateX(0);}
+  .menu-btn{display:flex; position:fixed; top:1rem; left:1rem; z-index:101; align-items:center; gap:0.4rem;
+    background:var(--accent); color:#000; border:none; border-radius:6px; padding:0.55rem 0.9rem;
+    font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:0.05em; cursor:pointer;}
+  main{padding:3.5rem 1.2rem 5rem;}
+  .hero .ver{position:static; display:block; margin-top:1rem;}
+  .scrim{display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:99;}
+  .scrim.show{display:block;}
+}
+
+/* print */
+@media print{
+  nav.toc,.menu-btn,.scrim{display:none !important;}
+  .wrap{grid-template-columns:1fr; max-width:none;}
+  body{background:#fff; color:#111;}
+  body::before{display:none;}
+  main{padding:0;}
+  section{border-color:#ccc; page-break-inside:avoid;}
+  .hero h1,.sec-head .num,.kbd{color:#111 !important;}
+  .box,.cards .c,.tbl td{background:#fff !important;}
+  .tbl th{background:#eee !important; color:#111 !important;}
+  p,td,li,.cards .c .ds,.cards .c .mt{color:#222 !important;}
+}
+</style>
+</head>
+<body>
+<button class="menu-btn" onclick="toggleNav()">☰ 目次</button>
+<div class="scrim" id="scrim" onclick="toggleNav()"></div>
+<div class="wrap">
+
+  <nav class="toc" id="toc">
+    <div class="brand">MUSCLE<br><b>NAVIGATOR</b></div>
+    <div class="sub">取扱説明書</div>
+    <a href="#s1"><span class="n">1</span>はじめに</a>
+    <a href="#s2"><span class="n">2</span>画面の基本構成</a>
+    <a href="#s3"><span class="n">3</span>運動レベル判定</a>
+    <a href="#s4"><span class="n">4</span>筋肉から探す</a>
+    <a href="#s5"><span class="n">5</span>症状から探す</a>
+    <a href="#s6"><span class="n">6</span>ストレッチ/ケア</a>
+    <a href="#s7"><span class="n">7</span>カスタマイズ</a>
+    <a href="#s8"><span class="n">8</span>タイマー機能</a>
+    <a href="#s9"><span class="n">9</span>筋トレ日誌</a>
+    <a href="#s10"><span class="n">10</span>困ったとき</a>
+    <a href="#s11"><span class="n">11</span>安全上の注意</a>
+  </nav>
+
+  <main>
+    <div class="hero">
+      <div class="kicker">USER GUIDE</div>
+      <h1>MUSCLE NAVIGATOR</h1>
+      <div class="jp">マッスル・ナビゲーター 取扱説明書</div>
+      <p class="tagline">自宅で完結する筋力トレーニング & セルフケア・アプリ。レベル判定から部位別・症状別メニュー、ストレッチ、タイマー、記録までを1つにまとめています。</p>
+      <div class="chips">
+        <span>レベル判定</span><span>部位別メニュー</span><span>症状別ケア</span>
+        <span>ストレッチ</span><span>カスタム</span><span>タイマー</span><span>トレ日誌</span>
+      </div>
+    </div>
+
+    <!-- 1 -->
+    <section id="s1">
+      <div class="sec-head"><span class="num">01</span><h2>はじめに</h2></div>
+      <p>MUSCLE NAVIGATOR は、ジムに通わなくても自宅で本格的な筋力トレーニングとセルフケアができる Web アプリです。スマートフォン・タブレット・パソコンのブラウザで動作し、インストールは不要です。</p>
+      <h3>このアプリでできること</h3>
+      <ul class="feat">
+        <li>質問に答えるだけで自分の運動レベル（初級・中級・上級）を判定</li>
+        <li>鍛えたい筋肉（全16部位）からトレーニングメニューを自動作成</li>
+        <li>気になる症状（全15種）から改善・ケアのメニューを提案</li>
+        <li>寝る前・朝・すきま時間など、目的別のストレッチ／セルフケア（全8ルーティン）</li>
+        <li>好きな種目だけを集めて自分専用メニューを作成</li>
+        <li>メニューを選ぶ → タイマーで運動・休憩を自動管理 → 終わると日誌に自動記録</li>
+        <li>トレーニング履歴を記録し、トレ日数・総挙上量などを集計</li>
+      </ul>
+      <div class="box">
+        <div class="t">ポイント：すべて自宅・器具なしでもOK</div>
+        <p>懸垂バーが必要な種目はありません。器具がない場合は「自重・器具なし」で絞り込めば、体ひとつでできる種目だけが表示されます。</p>
+      </div>
+      <h3>動作環境と起動方法</h3>
+      <ol class="steps">
+        <li>配布された <strong>HTMLファイル</strong>（MUSCLE_NAVIGATOR_v5.html）をスマホやPCに保存します。</li>
+        <li>ファイルをタップ／ダブルクリックすると、ブラウザでアプリが開きます。</li>
+        <li>インターネット接続は不要です（オフラインで動作します）。</li>
+      </ol>
+      <div class="box gray">
+        <div class="t">データの保存について</div>
+        <p>トレ日誌の記録は、お使いの端末のブラウザ内に保存されます。同じ端末・同じブラウザで開けば記録は残りますが、別の端末やブラウザの履歴削除を行うと記録は消えます。大切な記録は別途メモを残すことをおすすめします。</p>
+      </div>
+    </section>
+
+    <!-- 2 -->
+    <section id="s2">
+      <div class="sec-head"><span class="num">02</span><h2>画面の基本構成</h2></div>
+      <p>画面上部に6つのタブが並んでいます。タブをタップすると機能が切り替わります。</p>
+      <table class="tbl">
+        <thead><tr><th style="width:60px">番号</th><th style="width:200px">タブ名</th><th>役割</th></tr></thead>
+        <tbody>
+          <tr><td>①</td><td>運動レベル判定</td><td>質問に答えて自分のレベルを知る</td></tr>
+          <tr><td>②</td><td>筋肉から探す</td><td>鍛えたい部位からメニューを作る</td></tr>
+          <tr><td>③</td><td>症状から探す</td><td>気になる不調からケアを探す</td></tr>
+          <tr><td>④</td><td>ストレッチ/セルフケア</td><td>目的別の短時間ルーティン</td></tr>
+          <tr><td>⑤</td><td>カスタマイズ</td><td>好きな種目で自分専用メニュー</td></tr>
+          <tr><td>⑥</td><td>筋トレ日誌</td><td>記録の入力・履歴・集計</td></tr>
+        </tbody>
+      </table>
+      <div class="box">
+        <div class="t">種目カードの見方</div>
+        <p>各メニューに表示される「カード」をタップすると詳細が開きます。</p>
+        <p>・難易度（初級／中級／上級）と必要な器具（🛠）、目安時間（⏱）がひと目で分かります。</p>
+        <p>・「やり方」で手順を、「✓ 正しいフォームのポイント」でコツと注意点を確認できます。</p>
+        <p>・「＋ ワークアウトに追加」でタイマー運動の対象に加えられます。</p>
+      </div>
+    </section>
+
+    <!-- 3 -->
+    <section id="s3">
+      <div class="sec-head"><span class="num">03</span><h2>① 運動レベル判定</h2></div>
+      <p>自分に合った難易度を知るための機能です。年齢や運動経験に加え、実際にできる回数を入力すると、初級・中級・上級を自動で判定します。</p>
+      <h3>使い方</h3>
+      <ol class="steps">
+        <li>「①運動レベル判定」タブを開きます。</li>
+        <li>年齢を入力し、各質問で当てはまる選択肢をタップします（年齢以外はすべて回答が必要です）。</li>
+        <li>各設問のかっこ書きには<strong>正しいフォームのポイント</strong>が書かれています。その姿勢でできる回数を選んでください。</li>
+        <li>「レベルを判定する」を押すと、スコア（18点満点）と推奨難易度が表示されます。</li>
+        <li>「推奨レベルの種目を見る」を押すと、カスタマイズ画面に推奨難易度が引き継がれます。</li>
+      </ol>
+      <div class="box">
+        <div class="t">懸垂が家でできない方へ</div>
+        <p>上級判定の指標は、自宅でもできる「パイクプッシュアップ（お尻を高く上げた逆Vの姿勢で頭を床に近づける腕立て）」を採用しています。懸垂バーは不要です。</p>
+      </div>
+      <div class="box gray">
+        <div class="t">判定の目安</div>
+        <p><strong>初級：</strong>まず正しいフォームと習慣づくりの段階。週2〜3回の継続が目標。</p>
+        <p><strong>中級：</strong>基礎ができている段階。中級種目を中心に、徐々に上級へ。</p>
+        <p><strong>上級：</strong>高い基礎筋力あり。高難度の自重種目や高重量に挑戦できる。</p>
+        <p>※50歳以上の方は、安全のためスコアをやや控えめに補正します。</p>
+      </div>
+    </section>
+
+    <!-- 4 -->
+    <section id="s4">
+      <div class="sec-head"><span class="num">04</span><h2>② 筋肉から探す</h2></div>
+      <p>鍛えたい部位を選ぶと、その部位に効く種目を組み合わせたメニューを自動で作成します。複数の部位を同時に選ぶこともできます。</p>
+      <h3>対応部位（全16部位）</h3>
+      <div class="pills">
+        <span>胸</span><span>背中</span><span>肩</span><span>力こぶ</span><span>二の腕</span><span>腹筋</span><span>お尻</span><span>太もも前</span><span>太もも後</span><span>ふくらはぎ</span><span>僧帽筋</span><span>体幹</span><span>前腕</span><span>手・指</span><span>横腹</span><span>首</span>
+      </div>
+      <h3>使い方</h3>
+      <ol class="steps">
+        <li>鍛えたい部位をタップします（複数選択可。もう一度押すと解除）。</li>
+        <li>必要に応じて「絞り込み」で<strong>難易度</strong>と<strong>器具</strong>を指定します。</li>
+        <li>「メニューを表示する」を押すと、条件に合う種目が最大8件表示されます。</li>
+        <li>各カードをタップして、やり方・フォームのポイント・セット数・回数・休憩を確認します。</li>
+      </ol>
+      <h3>絞り込みの種類</h3>
+      <table class="tbl">
+        <thead><tr><th style="width:140px">項目</th><th>選べる条件</th></tr></thead>
+        <tbody>
+          <tr><td>難易度</td><td>すべて / 初級 / 中級 / 上級</td></tr>
+          <tr><td>器具</td><td>すべて / 自重・器具なし / 椅子・台 / ダンベル / チューブ</td></tr>
+        </tbody>
+      </table>
+      <div class="box">
+        <div class="t">ヒント</div>
+        <p>絞り込みは結果表示後に変更すると、その場でメニューが更新されます。条件が厳しすぎて0件になった場合は、難易度や器具の指定をゆるめてください。</p>
+      </div>
+    </section>
+
+    <!-- 5 -->
+    <section id="s5">
+      <div class="sec-head"><span class="num">05</span><h2>③ 症状から探す</h2></div>
+      <p>肩こり・腰痛などの不調や、疲労感・冷えといった気になる状態から、改善やケアにつながる運動・ストレッチを提案します。</p>
+      <h3>対応する症状（全15種）</h3>
+      <div class="pills red">
+        <span>肩こり</span><span>腰痛</span><span>膝の痛み</span><span>猫背・姿勢不良</span><span>足のむくみ</span><span>股関節の硬さ</span><span>緊張型頭痛</span><span>手首・肘疲れ</span><span>筋肉痛</span><span>全身の疲労感</span><span>手足の痺れ</span><span>ふらつき</span><span>眼精疲労</span><span>冷え性</span><span>寝つきが悪い</span>
+      </div>
+      <h3>使い方</h3>
+      <ol class="steps">
+        <li>気になる症状をひとつ選びます。</li>
+        <li>「改善メニューを表示する」を押すと、原因の解説と一緒にケア種目が表示されます。</li>
+        <li>各カードで、やり方と注意点（⚠）を必ず確認してから行ってください。</li>
+      </ol>
+      <div class="box warn">
+        <div class="t">安全に関する大切なお願い</div>
+        <p>手足の痺れ・ふらつきなどは、運動で和らぐこともありますが、症状が片側だけ・持続する・力が入らない・回転性のめまいや吐き気を伴う場合は、自己判断で運動を続けず、必ず医療機関を受診してください。</p>
+        <p>このアプリは医療行為の代わりではありません。痛みが強いとき、持病があるときは、医師に相談のうえご利用ください。</p>
+      </div>
+    </section>
+
+    <!-- 6 -->
+    <section id="s6">
+      <div class="sec-head"><span class="num">06</span><h2>④ ストレッチ / セルフケア</h2></div>
+      <p>「いつ・どんな目的で」から選べる、短時間で完結するルーティン集です。すきま時間や就寝前などに手軽に行えます。</p>
+      <h3>ルーティン一覧（全8種）</h3>
+      <div class="cards">
+        <div class="c"><div class="ic">🌙</div><div class="nm">寝る前ストレッチ</div><div class="mt">約8分 / 寝室</div><div class="ds">心身をゆるめて快眠へ</div></div>
+        <div class="c"><div class="ic">🌅</div><div class="nm">朝の目覚め</div><div class="mt">約5分 / ベッド</div><div class="ds">体を起こし1日を軽やかに</div></div>
+        <div class="c"><div class="ic">⏱</div><div class="nm">デスクで3分</div><div class="mt">約3分 / 座位</div><div class="ds">仕事の合間にリフレッシュ</div></div>
+        <div class="c"><div class="ic">💆</div><div class="nm">首肩こり解消</div><div class="mt">約6分 / 椅子・立位</div><div class="ds">PC作業の首肩のこりに</div></div>
+        <div class="c"><div class="ic">👁</div><div class="nm">目の疲れリセット</div><div class="mt">約4分 / どこでも</div><div class="ds">スマホ・PC疲れの目に</div></div>
+        <div class="c"><div class="ic">🦵</div><div class="nm">下半身すっきり</div><div class="mt">約7分 / 床</div><div class="ds">むくみ・脚の疲れ・冷えに</div></div>
+        <div class="c"><div class="ic">🛟</div><div class="nm">腰ラクケア</div><div class="mt">約6分 / 床</div><div class="ds">座りっぱなしの腰に</div></div>
+        <div class="c"><div class="ic">🧘</div><div class="nm">全身リラックス</div><div class="mt">約10分 / 床</div><div class="ds">休日に全身をリセット</div></div>
+      </div>
+      <h3>使い方</h3>
+      <ol class="steps">
+        <li>目的のカードをタップすると、ねらいの説明と手順（ステップ）が表示されます。</li>
+        <li>上から順に行えば、そのルーティンが完成します。</li>
+      </ol>
+    </section>
+
+    <!-- 7 -->
+    <section id="s7">
+      <div class="sec-head"><span class="num">07</span><h2>⑤ カスタマイズ</h2></div>
+      <p>すべての種目の中から好きなものだけを集めて、自分専用のメニューを作る機能です。</p>
+      <h3>使い方</h3>
+      <ol class="steps">
+        <li>検索ボックスに種目名や部位を入れる、または難易度のフィルタで絞り込みます。</li>
+        <li>追加したい種目の「＋」ボタンを押すと、画面上部の「MY MENU」に入ります。</li>
+        <li>「−」または「✕」で取り消せます。MY MENUには合計種目数と推定時間が表示されます。</li>
+        <li>MY MENU の <span class="kbd">▶ このメニューをタイマーで実行</span> を押すと、組んだメニューをそのままタイマーで開始できます。</li>
+      </ol>
+      <div class="box">
+        <div class="t">レベル判定との連携</div>
+        <p>「①運動レベル判定」で推奨レベルを出してからこの画面を開くと、最初から推奨難易度で絞り込まれた状態になります。</p>
+      </div>
+    </section>
+
+    <!-- 8 -->
+    <section id="s8">
+      <div class="sec-head"><span class="num">08</span><h2>ワークアウト & タイマー機能</h2></div>
+      <p>選んだ種目を、タイマーで「運動 → 休憩 → 次のセット」と自動で進めてくれる機能です。運動が終わると自動で日誌に記録されます。</p>
+      <h3>メニューの集め方（2通り）</h3>
+      <ul class="feat">
+        <li><strong>その都度追加：</strong>どのタブでも、種目カードを開いて <span class="kbd">＋ ワークアウトに追加</span> を押します。追加すると画面下に<strong>フローティングバー</strong>が現れ、追加した種目数が表示されます。<span class="kbd">スタート ▶</span> で確認画面へ。</li>
+        <li><strong>カスタマイズから：</strong>「⑤カスタマイズ」で組んだ MY MENU の <span class="kbd">▶ このメニューをタイマーで実行</span> を押すと、そのまま確認画面へ進みます。</li>
+      </ul>
+      <h3>確認画面でタイマー方式を選ぶ</h3>
+      <p>開始前の確認画面で、種目の一覧を確認し、次の2つのタイマー方式から選べます。各方式の秒数はあらかじめ決まっています（変更不要）。いずれも<strong>3セット</strong>を自動で進めます。</p>
+      <table class="tbl">
+        <thead><tr><th style="width:130px">方式</th><th>1セットの流れ</th><th style="width:150px">セット間/種目間</th></tr></thead>
+        <tbody>
+          <tr><td><strong>① 通常式</strong></td><td>30秒運動 →（休憩）を3セット繰り返す</td><td>セット間15秒 / 種目間60秒</td></tr>
+          <tr><td><strong>② 3/7式</strong></td><td>3秒→4秒→5秒→6秒→7秒の保持（各保持の間に15秒インターバル）で1セット</td><td>セット間15秒 / 種目間60秒</td></tr>
+        </tbody>
+      </table>
+      <div class="box">
+        <div class="t">どちらを選べばいい？</div>
+        <p><strong>① 通常式</strong>は、一定時間しっかり動く・キープするオーソドックスな方式です。腕立てやプランクなど多くの種目に向いています。</p>
+        <p><strong>② 3/7式</strong>は、短い保持を少しずつ伸ばしながら繰り返す方式で、筋肉に効かせたいときや等尺性（キープ系）の種目に向いています。</p>
+      </div>
+      <div class="box gray">
+        <div class="t">流れの例</div>
+        <p><strong>通常式：</strong>30秒運動 → 15秒休憩 → 30秒 → 15秒 → 30秒 →（種目間60秒）→ 次の種目へ。</p>
+        <p><strong>3/7式：</strong>3秒保持 → 15秒 → 4秒 → 15秒 → 5秒 → 15秒 → 6秒 → 15秒 → 7秒 →（セット間15秒）→ 2セット目 → 3セット目 →（種目間60秒）→ 次の種目へ。</p>
+      </div>
+      <h3>タイマー画面の操作</h3>
+      <ul class="feat">
+        <li>中央の円が残り時間をカウントダウンします（運動中は黄色、保持＝3/7式のキープ中はオレンジ、休憩中は緑）。</li>
+        <li>画面には「セット ◯/3」「◯本目」「◯秒キープ」など、今どこを行っているかが表示されます。</li>
+        <li>運動・保持中は、その種目のフォームのポイントも表示されます。</li>
+        <li>フェーズの切り替わりは、音とバイブ（対応端末）でお知らせします。</li>
+        <li>「⏸ 一時停止 / ▶ 再開」「⏭ スキップ」「■ 中止」で操作できます。</li>
+      </ul>
+      <div class="box">
+        <div class="t">運動が終わると…</div>
+        <p>すべてのセットが終わると「WORKOUT COMPLETE」と表示され、実施した種目・セット数・選んだ方式が自動で「⑥筋トレ日誌」に記録されます（メモ欄に「タイマー（通常式／3/7式）で実施（自動記録）」と入ります）。「記録を見る」で日誌へ移動できます。</p>
+        <p>※「■ 中止」で途中終了した場合は記録されません。</p>
+      </div>
+    </section>
+
+    <!-- 9 -->
+    <section id="s9">
+      <div class="sec-head"><span class="num">09</span><h2>⑥ 筋トレ日誌</h2></div>
+      <p>トレーニングの記録をつけ、続けるほど積み上がる数字を確認できる機能です。タイマーからの自動記録に加え、手動でも入力できます。</p>
+      <h3>手動で記録する</h3>
+      <ol class="steps">
+        <li>日付・種目名を入力します（種目名は候補から選べます）。</li>
+        <li>重量(kg)・回数・セット数・メモを必要に応じて入力します。</li>
+        <li>「記録する」を押すと履歴に追加されます。</li>
+      </ol>
+      <h3>集計される数字</h3>
+      <table class="tbl">
+        <thead><tr><th style="width:160px">指標</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>トレ日数</td><td>記録のある日付の数</td></tr>
+          <tr><td>記録数</td><td>登録された種目記録の合計件数</td></tr>
+          <tr><td>総挙上量(kg)</td><td>重量 × 回数 × セット数 の合計</td></tr>
+        </tbody>
+      </table>
+      <ul class="feat"><li>各記録の「✕」で削除できます（削除すると元に戻せません）。</li></ul>
+    </section>
+
+    <!-- 10 -->
+    <section id="s10">
+      <div class="sec-head"><span class="num">10</span><h2>よくある質問・困ったとき</h2></div>
+      <table class="tbl">
+        <thead><tr><th style="width:220px">こんなとき</th><th>対処</th></tr></thead>
+        <tbody>
+          <tr><td>メニューに何も出ない</td><td>筋肉タブで、絞り込みが厳しすぎると0件になります。難易度や器具を「すべて」に戻してください。</td></tr>
+          <tr><td>タイマーの音が鳴らない</td><td>端末がマナーモードのことがあります。音量設定を確認してください。バイブは非対応の端末では動作しません。</td></tr>
+          <tr><td>記録が消えた</td><td>ブラウザの履歴・サイトデータを削除すると記録も消えます。別の端末・ブラウザでは共有されません。</td></tr>
+          <tr><td>下のバーが出ない</td><td>種目を1つ以上「ワークアウトに追加」すると表示されます。「クリア」で空にできます。カスタマイズの MY MENU からは「▶ このメニューをタイマーで実行」で直接開始できます。</td></tr>
+          <tr><td>3/7式と通常式の違いは？</td><td>通常式は30秒運動×3セット。3/7式は3→4→5→6→7秒の保持を15秒間隔で行うのを1セットとして3セット行います。開始前の確認画面で選べます。</td></tr>
+          <tr><td>休憩の秒数を変えたい</td><td>各方式の秒数（運動・休憩・セット間・種目間）はあらかじめ決まっており、変更はできません。</td></tr>
+          <tr><td>器具がない</td><td>器具の絞り込みで「自重・器具なし」を選べば、体ひとつでできる種目だけになります。</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 11 -->
+    <section id="s11">
+      <div class="sec-head"><span class="num">11</span><h2>安全にお使いいただくために</h2></div>
+      <ul class="feat">
+        <li>運動前は軽く体を動かして温め、痛みを感じたらすぐに中止してください。</li>
+        <li>正しいフォームを最優先にし、無理な重量・回数・難易度は避けてください。</li>
+        <li>持病がある方、妊娠中の方、痛みや不調が続く方は、医師に相談のうえご利用ください。</li>
+        <li>手足の痺れ・強いめまい・力が入らないなどの症状があるときは、運動せず医療機関を受診してください。</li>
+        <li>水分をこまめに補給し、体調がすぐれない日は休む勇気を持ちましょう。</li>
+      </ul>
+      <div class="box warn">
+        <div class="t">免責事項</div>
+        <p>本アプリおよび本書は、健康増進を目的とした一般的な情報提供であり、医学的な診断・治療・助言に代わるものではありません。ご利用は自己責任でお願いいたします。本アプリの利用により生じたいかなる結果についても、制作者は責任を負いかねます。</p>
+      </div>
+    </section>
+
+    <footer>
+      <div class="end">― 楽しく、安全に、続けていきましょう ―</div>
+      <div class="meta">MUSCLE NAVIGATOR 取扱説明書</div>
+    </footer>
+  </main>
+</div>
+
+<script>
+function toggleNav(){
+  document.getElementById('toc').classList.toggle('open');
+  document.getElementById('scrim').classList.toggle('show');
+}
+// close mobile nav on link tap
+document.querySelectorAll('nav.toc a').forEach(a=>a.addEventListener('click',()=>{
+  if(window.innerWidth<=880) toggleNav();
+}));
+// scroll-spy: highlight active section in TOC
+const links = [...document.querySelectorAll('nav.toc a')];
+const sections = links.map(a=>document.querySelector(a.getAttribute('href')));
+const obs = new IntersectionObserver(entries=>{
+  entries.forEach(e=>{
+    if(e.isIntersecting){
+      const i = sections.indexOf(e.target);
+      links.forEach(l=>l.classList.remove('active'));
+      if(i>=0) links[i].classList.add('active');
+    }
+  });
+}, {rootMargin:'-20% 0px -70% 0px'});
+sections.forEach(s=>s&&obs.observe(s));
+</script>
+</body>
+</html>

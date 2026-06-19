@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>国試〇×問題集 使用説明書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Noto+Serif+JP:wght@400;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --navy:   #1e3a4f;
+  --primary:#2c5f7c;
+  --mid:    #5a8fa8;
+  --light:  #eef4f8;
+  --gold:   #c8963e;
+  --gold-lt:#fdf3e2;
+  --green:  #3d9970;
+  --green-lt:#e8f5ee;
+  --amber:  #e09b2d;
+  --amber-lt:#fff8e1;
+  --red:    #c0392b;
+  --red-lt: #fdf0ee;
+  --purple: #5e35b1;
+  --purple-lt:#ede7f6;
+  --text:   #1a2a35;
+  --muted:  #5a7080;
+  --border: #d0dce5;
+  --bg:     #f5f8fa;
+  --white:  #ffffff;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Noto Sans JP',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.85;
+  font-size:14px;
+}
+
+/* ========== COVER ========== */
+.cover{
+  min-height:100vh;
+  background:linear-gradient(160deg,#0f2333 0%,#1e3a4f 40%,#2c5f7c 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  text-align:center;padding:80px 40px;position:relative;overflow:hidden;
+}
+.cover::before{
+  content:'';position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80% 60% at 20% 20%,rgba(90,143,168,.12) 0%,transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%,rgba(200,150,62,.08) 0%,transparent 60%);
+}
+/* 格子模様 */
+.cover::after{
+  content:'';position:absolute;inset:0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.03) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(255,255,255,.03) 1px,transparent 1px);
+  background-size:48px 48px;
+}
+.cover-inner{position:relative;z-index:1;max-width:640px}
+.cover-eyebrow{
+  display:inline-block;
+  border:1px solid rgba(255,255,255,.25);
+  border-radius:20px;padding:5px 20px;
+  font-size:11px;letter-spacing:3px;color:rgba(255,255,255,.7);
+  margin-bottom:32px;font-family:'DM Mono',monospace;
+}
+.cover h1{
+  font-family:'Noto Serif JP',serif;
+  font-size:44px;font-weight:700;line-height:1.25;
+  color:#fff;margin-bottom:16px;letter-spacing:1px;
+}
+.cover h1 em{color:#7ec8e3;font-style:normal}
+.cover-sub{font-size:15px;color:rgba(255,255,255,.65);margin-bottom:10px}
+.cover-ver{
+  display:block;text-align:center;
+  background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.18);
+  border-radius:6px;padding:4px 16px;font-size:12px;
+  font-family:'DM Mono',monospace;color:rgba(255,255,255,.8);
+  margin:0 auto 48px;letter-spacing:1px;width:fit-content;
+}
+.cover-chips{
+  display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:48px;max-width:440px;margin-left:auto;margin-right:auto;
+}
+.chip{
+  background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.18);
+  border-radius:8px;padding:10px 18px;font-size:12px;color:rgba(255,255,255,.85);
+}
+.chip strong{display:block;font-size:14px;margin-bottom:2px;color:#fff}
+.cover-credits{
+  font-size:12px;color:rgba(255,255,255,.45);line-height:2;
+  border-top:1px solid rgba(255,255,255,.1);padding-top:20px;margin-top:0;
+}
+
+/* ========== 大外ラッパー ========== */
+.wrap{max-width:900px;margin:0 auto;padding:0 32px}
+
+/* ========== 目次 ========== */
+.toc-section{background:var(--navy);color:#fff;padding:60px 0}
+.toc-section .wrap{}
+.toc-section h2{font-size:13px;letter-spacing:3px;font-family:'DM Mono',monospace;color:var(--mid);margin-bottom:28px;text-transform:uppercase}
+.toc-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:4px;
+}
+.toc-item{
+  display:flex;align-items:center;gap:12px;
+  padding:10px 12px;border-radius:8px;
+  text-decoration:none;color:rgba(255,255,255,.75);
+  transition:background .2s,color .2s;font-size:13px;
+}
+.toc-item:hover{background:rgba(255,255,255,.07);color:#fff}
+.toc-num{
+  width:26px;height:26px;border-radius:6px;
+  background:rgba(90,143,168,.3);color:var(--mid);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:'DM Mono',monospace;flex-shrink:0;
+}
+
+/* ========== セクション共通 ========== */
+.section{padding:72px 0;border-bottom:1px solid var(--border)}
+.section-header{
+  display:flex;align-items:flex-start;gap:20px;margin-bottom:36px;
+}
+.sec-num{
+  width:56px;height:56px;border-radius:14px;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;font-weight:900;flex-shrink:0;
+  font-family:'DM Mono',monospace;
+  box-shadow:0 4px 16px rgba(44,95,124,.3);
+}
+.section-header-text{}
+.section-header-text h2{font-size:26px;font-weight:700;color:var(--navy);margin-bottom:4px}
+.section-header-text p{font-size:13px;color:var(--muted)}
+
+/* ========== SVGイラストエリア ========== */
+.svg-wrap{
+  display:flex;justify-content:center;margin:32px 0;
+}
+.svg-wrap svg{max-width:100%;border-radius:14px;box-shadow:0 6px 24px rgba(0,0,0,.1)}
+
+/* ========== Callout ========== */
+.callout{
+  display:flex;gap:14px;border-radius:12px;padding:16px 20px;margin:20px 0;
+}
+.callout-info  {background:var(--light);border-left:4px solid var(--primary)}
+.callout-warn  {background:var(--amber-lt);border-left:4px solid var(--amber)}
+.callout-tip   {background:var(--green-lt);border-left:4px solid var(--green)}
+.callout-purple{background:var(--purple-lt);border-left:4px solid var(--purple)}
+.callout-red   {background:var(--red-lt);border-left:4px solid var(--red)}
+.callout .ico{font-size:22px;flex-shrink:0;margin-top:1px}
+.callout .body h4{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--navy)}
+.callout .body p{font-size:13px;color:var(--muted);line-height:1.75}
+.callout .body p a{color:var(--primary)}
+
+/* ========== ステップ ========== */
+.steps{display:flex;flex-direction:column;gap:14px;margin:20px 0}
+.step{
+  display:flex;gap:16px;background:var(--white);
+  border:1px solid var(--border);border-radius:12px;padding:18px 20px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+}
+.step-n{
+  width:34px;height:34px;border-radius:50%;
+  background:var(--primary);color:#fff;
+  display:flex;align-items:center;justify-content:center;
+  font-size:14px;font-weight:700;flex-shrink:0;margin-top:1px;
+  font-family:'DM Mono',monospace;
+}
+.step-body h4{font-size:14px;font-weight:700;color:var(--primary);margin-bottom:5px}
+.step-body p{font-size:13px;color:var(--muted);line-height:1.75}
+
+/* ========== モードカード ========== */
+.mode-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:20px 0}
+.mode-card{
+  background:var(--white);border:1px solid var(--border);
+  border-radius:14px;padding:22px;
+  box-shadow:0 2px 8px rgba(0,0,0,.04);
+  position:relative;overflow:hidden;
+}
+.mode-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:3px;
+}
+.mode-card.c1::before{background:linear-gradient(90deg,var(--primary),var(--mid))}
+.mode-card.c2::before{background:linear-gradient(90deg,var(--green),#6dbf8f)}
+.mode-card.c3::before{background:linear-gradient(90deg,var(--gold),#e8b86a)}
+.mode-card.c4::before{background:linear-gradient(90deg,var(--purple),#8b6bd8)}
+.mode-icon{font-size:32px;margin-bottom:10px}
+.mode-card h3{font-size:15px;font-weight:700;color:var(--navy);margin-bottom:8px}
+.mode-card p{font-size:12px;color:var(--muted);line-height:1.75}
+.tag{
+  display:inline-block;font-size:10px;padding:2px 10px;
+  border-radius:10px;margin-top:10px;font-weight:700;
+}
+.tag-blue  {background:var(--light);color:var(--primary)}
+.tag-green {background:var(--green-lt);color:var(--green)}
+.tag-gold  {background:var(--gold-lt);color:var(--gold)}
+.tag-purple{background:var(--purple-lt);color:var(--purple)}
+
+/* ========== テーブル ========== */
+.tbl{
+  width:100%;border-collapse:collapse;font-size:13px;
+  margin:16px 0;border-radius:12px;overflow:hidden;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+.tbl th{
+  background:var(--primary);color:#fff;
+  padding:10px 16px;text-align:left;font-size:12px;font-weight:600;
+}
+.tbl td{padding:10px 16px;border-bottom:1px solid var(--border)}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tr:nth-child(even) td{background:var(--light)}
+.tbl td.r{text-align:right;font-weight:700;color:var(--primary);font-family:'DM Mono',monospace}
+
+/* ========== 忘却曲線レベルバッジ ========== */
+.lv{
+  display:inline-block;width:44px;text-align:center;
+  border-radius:6px;padding:2px 0;font-size:11px;font-weight:700;color:#fff;
+  font-family:'DM Mono',monospace;
+}
+.lv0{background:#9e9e9e}.lv1{background:#e53935}.lv2{background:#f9a825}
+.lv3{background:#7cb342}.lv4{background:#43a047}.lv5{background:#1e88e5}
+
+/* ========== 設定トグル ========== */
+.setting-card{background:var(--white);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:16px 0}
+.setting-head{background:var(--primary);color:#fff;padding:10px 18px;font-size:13px;font-weight:700}
+.setting-row{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:11px 18px;border-bottom:1px solid var(--border);
+}
+.setting-row:last-child{border-bottom:none}
+.setting-lbl{font-size:13px;font-weight:500}
+.setting-desc{font-size:11px;color:var(--muted);margin-top:1px}
+.toggle{
+  width:38px;height:22px;border-radius:11px;
+  background:var(--primary);position:relative;flex-shrink:0;
+}
+.toggle::after{
+  content:'';position:absolute;right:3px;top:3px;
+  width:16px;height:16px;border-radius:50%;background:#fff;
+}
+.toggle.off{background:#cbd5dc}
+.toggle.off::after{right:auto;left:3px}
+.badge-link{font-size:12px;color:var(--mid)}
+
+/* ========== 2カラム ========== */
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:28px;align-items:start}
+
+/* ========== スクリーンモック ========== */
+.phone-wrap{display:flex;justify-content:center;margin:24px 0}
+
+/* ========== h3 ========== */
+.sh3{
+  font-size:16px;font-weight:700;color:var(--primary);
+  margin:32px 0 14px;display:flex;align-items:center;gap:8px;
+}
+.sh3::before{
+  content:'';display:block;width:4px;height:18px;
+  border-radius:2px;background:var(--primary);flex-shrink:0;
+}
+
+/* ========== 本文 ========== */
+.prose{font-size:13px;color:var(--muted);line-height:1.85;margin-bottom:14px}
+.prose strong{color:var(--text)}
+
+/* ========== リンクリスト ========== */
+.link-list{list-style:none;margin:12px 0}
+.link-list li{padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.link-list li:last-child{border-bottom:none}
+.link-list a{color:var(--primary);word-break:break-all}
+
+/* ========== footer ========== */
+footer{
+  text-align:center;padding:48px 32px;color:var(--muted);font-size:12px;
+  border-top:1px solid var(--border);line-height:2;
+}
+footer a{color:var(--mid)}
+
+/* ========== responsive ========== */
+@media(max-width:640px){
+  .cover h1{font-size:30px}
+  .toc-grid{grid-template-columns:1fr}
+  .two-col{grid-template-columns:1fr}
+  .mode-grid{grid-template-columns:1fr}
+  .wrap{padding:0 16px}
+  .section{padding:48px 0}
+}
+</style>
+
+</head><body>
+<div class="cover"><div class="cover-inner">
+  <span class="cover-eyebrow">USER MANUAL</span>
+  <h1>国試<em>〇×</em>問題集</h1>
+  <p class="cover-sub">一問一答＋忘却曲線で定着させる</p>
+  <span class="cover-ver">東洋医学 学習スイート 収録アプリ</span>
+  <div class="cover-chips"><div class="chip"><strong>〇×</strong>正誤形式で出題</div><div class="chip"><strong>📚</strong>約18,560問収録</div><div class="chip"><strong>🔄</strong>忘却曲線で復習</div><div class="chip"><strong>📊</strong>進度を記録</div></div>
+  <div class="cover-credits">東洋医学 学習スイート<br>制作者：大阪行岡医療専門学校長柄校　鍼灸科　75期生　藤本</div>
+</div></div>
+<div class="toc-section"><div class="wrap"><h2>TABLE OF CONTENTS</h2><div class="toc-grid"><a class="toc-item" href="#m1"><span class="toc-num">01</span>このアプリについて</a><a class="toc-item" href="#m2"><span class="toc-num">02</span>3つの学習モード</a><a class="toc-item" href="#m3"><span class="toc-num">03</span>解答画面の使い方</a><a class="toc-item" href="#m4"><span class="toc-num">04</span>忘却曲線（復習スケジュール）</a><a class="toc-item" href="#m5"><span class="toc-num">05</span>成績とデータ管理</a><a class="toc-item" href="#m6"><span class="toc-num">06</span>困ったときは</a></div></div></div>
+<div class="section" id="m1"><div class="wrap">
+  <div class="section-header"><div class="sec-num">01</div>
+  <div class="section-header-text"><h2>このアプリについて</h2><p>〇×で知識を確認し、忘却曲線で定着</p></div></div>
+  <p class="prose">「国試〇×問題集」は、あん摩マッサージ指圧師・はり師きゅう師の国家試験の四択問題を〇×（正誤）形式に分解した問題集です。第25〜34回の過去問とAI予想を合わせ、約18,560問を収録しています。国試学習アプリと同じ忘却曲線（間隔反復）の仕組みで、解いた問題を最適なタイミングで復習できます。</p><div class="callout callout-info"><div class="ico">📴</div><div class="body"><h4>オフライン対応・データの取り込み</h4><p>初回のみ、配布された <strong>marubatsu_questions.json</strong> を「取り込み」して使います。取り込んだ問題データは端末内（IndexedDB）に保存され、次回からはオフラインでも使えます。学習履歴（忘却曲線）も端末内に保存されます。データを更新したいときは、設定画面の「問題データ → 📥 取り込み」から選び直します。</p></div></div>
+</div></div><div class="section" id="m2"><div class="wrap">
+  <div class="section-header"><div class="sec-num">02</div>
+  <div class="section-header-text"><h2>3つの学習モード</h2><p>ホームから選ぶ</p></div></div>
+  <p class="prose">ホーム画面の上部には、総問題数・解答済み・本日の復習対象が表示されます。学習モードは国試学習アプリと同じ3種類です。</p><table class="tbl"><tr><th>モード</th><th>内容</th></tr><tr><td>📅 今日の演習</td><td>全科目から分散し、未出題・復習対象を優先して出題します。問題数（10〜50問）を選んで開始します。</td></tr><tr><td>🔄 復習モード</td><td>忘却曲線に基づき、復習すべき時期になった問題（復習対象）を優先して出題します。</td></tr><tr><td>📚 科目別演習</td><td>科目を選び、その科目を集中的に学習します。</td></tr></table>
+</div></div><div class="section" id="m3"><div class="wrap">
+  <div class="section-header"><div class="sec-num">03</div>
+  <div class="section-header-text"><h2>解答画面の使い方</h2><p>〇か×かを選ぶ</p></div></div>
+  <p class="prose">問題文が正しいと思えば「〇（正しい）」、誤りだと思えば「×（誤り）」を選びます。解答するとすぐに正誤と解説が表示されます。画面上部には進み具合・このセッションの正答率・その問題の忘却曲線レベルが表示されます。</p><div class="callout callout-tip"><div class="ico">💡</div><div class="body"><h4>解説で理解を深める</h4><p>正解・不正解にかかわらず解説が表示されます。間違えた問題は解説を読んで、なぜそうなるのかを確認しましょう。間違えた問題はレベルが0に戻り、すぐに復習対象になります。</p></div></div>
+</div></div><div class="section" id="m4"><div class="wrap">
+  <div class="section-header"><div class="sec-num">04</div>
+  <div class="section-header-text"><h2>忘却曲線（復習スケジュール）</h2><p>解くほど間隔が広がる</p></div></div>
+  <p class="prose">国試学習アプリと同じ間隔反復方式です。問題に正解するたびにレベルが上がり、次の復習までの間隔が広がります。不正解だとレベル0に戻り、当日中に再び復習対象になります。</p><table class="tbl"><tr><th>レベル</th><th>次の復習までの間隔</th></tr><tr><td>未学習(レベル0)</td><td>まだ解いていない／直前に間違えた（当日中に復習）</td></tr><tr><td>レベル1</td><td>2日後</td></tr><tr><td>レベル2</td><td>3日後</td></tr><tr><td>レベル3</td><td>7日後</td></tr><tr><td>レベル4</td><td>14日後</td></tr><tr><td>レベル5</td><td>30日後</td></tr></table><div class="callout callout-purple"><div class="ico">📈</div><div class="body"><h4>成績画面で進度を確認</h4><p>成績画面では、忘却曲線レベルごとの問題数と、科目別の学習進度（レベル別の積み上げ）を確認できます。色が右（青）に進むほど習得が進んでいます。</p></div></div>
+</div></div><div class="section" id="m5"><div class="wrap">
+  <div class="section-header"><div class="sec-num">05</div>
+  <div class="section-header-text"><h2>成績とデータ管理</h2><p>記録の確認と初期化</p></div></div>
+  <p class="prose">下部メニューの「成績」では、解答済み数・習得(レベル4以上)・本日の復習対象に加えて、忘却曲線レベルごとの問題数と科目別の学習進度が見られます。「データ管理」から学習記録（忘却曲線・解答履歴）のリセットができます。</p><div class="callout callout-warn"><div class="ico">🗑️</div><div class="body"><h4>リセットは慎重に</h4><p>学習記録のリセットは、忘却曲線と解答履歴をすべて消去します。元に戻せません。</p></div></div>
+</div></div><div class="section" id="m6"><div class="wrap">
+  <div class="section-header"><div class="sec-num">06</div>
+  <div class="section-header-text"><h2>困ったときは</h2><p>よくある質問</p></div></div>
+  <p class="prose"><strong>Q. オフラインで使えますか。</strong><br>A. 使えます。初回に marubatsu_questions.json を取り込めば、以降は通信のない場所でも利用できます（問題データと学習記録は端末内に保持されます）。</p><p class="prose"><strong>Q. 「今は復習対象の問題がありません」と出る。</strong><br>A. まだ復習の時期になった問題がない状態です。「今日の演習」や「科目別演習」で新しい問題を解くと、復習対象が増えていきます。</p><p class="prose"><strong>Q. 国試学習アプリとの違いは？</strong><br>A. 学習の仕組み（3モード・忘却曲線・成績）は同じです。国試学習アプリは四択、こちらは〇×形式という違いです。併用すると効果的です。</p><p class="prose"><strong>Q. バージョンや更新は？</strong><br>A. アプリ本体の更新は統合ホームの「🔄 更新確認」で行います。問題データの更新は、設定画面の「問題データ → 📥 取り込み」から新しいファイルを選び直します。</p>
+</div></div>
+<footer>東洋医学 学習スイート ／ 国試<em>〇×</em>問題集<br>本アプリは個人学習用途を想定しています。再配布・商用利用は禁止されています。</footer>
+</body></html>

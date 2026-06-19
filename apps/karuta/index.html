@@ -1,0 +1,1012 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<script>
+/* ===== 統合アプリ用ガード（自動挿入・元コードは未変更）=====
+   iframe 内で動くとき、各アプリ独自の Service Worker 登録／キャッシュ操作／
+   バージョン確認を無効化し、キャッシュとバージョン管理を親（統合ホーム）へ
+   一元化します。localStorage（学習データ・カルテ等）はそのまま使えます。 */
+(function(){
+  try{
+    if (window.top === window.self) return; // 単体起動時は何もしない
+
+    // 1) Service Worker を無害なスタブに
+    var swStub = {
+      register:function(){ return Promise.reject(new Error('SW disabled in integrated app')); },
+      getRegistration:function(){ return Promise.resolve(undefined); },
+      getRegistrations:function(){ return Promise.resolve([]); },
+      addEventListener:function(){}, removeEventListener:function(){},
+      get controller(){ return null; },
+      ready:new Promise(function(){})
+    };
+    try{ Object.defineProperty(navigator,'serviceWorker',{get:function(){return swStub;},configurable:true}); }catch(e){}
+
+    // 2) Cache Storage を無効化（子アプリが親のキャッシュを消さないように）
+    var noop0=function(){return Promise.resolve();};
+    function neutralizeCaches(){
+      try{
+        var cacheStub={
+          open:function(){return Promise.resolve({addAll:noop0,add:noop0,put:noop0,
+            match:function(){return Promise.resolve(undefined);},delete:function(){return Promise.resolve(false);},
+            keys:function(){return Promise.resolve([]);}});},
+          keys:function(){return Promise.resolve([]);},
+          delete:function(){return Promise.resolve(false);},
+          match:function(){return Promise.resolve(undefined);},
+          has:function(){return Promise.resolve(false);}
+        };
+        try{ Object.defineProperty(window,'caches',{get:function(){return cacheStub;},configurable:true}); }
+        catch(e){
+          // defineProperty が不可なら既存オブジェクトのメソッドを直接無害化
+          if(window.caches){
+            try{ window.caches.keys=function(){return Promise.resolve([]);}; }catch(_){}
+            try{ window.caches.delete=function(){return Promise.resolve(false);}; }catch(_){}
+            try{ window.caches.open=cacheStub.open; }catch(_){}
+          }
+        }
+      }catch(e){}
+    }
+    neutralizeCaches();
+
+    // 3) アプリ独自の「更新」ボタンを隠す（親の「更新確認」に一本化）
+    var css='/* karuta: 非表示にする独自要素なし */';
+    function injectCss(){ try{ var s=document.createElement('style'); s.textContent=css; (document.head||document.documentElement).appendChild(s);}catch(e){} }
+    if(document.head){ injectCss(); }
+    else { document.addEventListener('DOMContentLoaded', injectCss); }
+  }catch(e){}
+
+
+  })();
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五行穴 読み上げアプリ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@300;400;600&family=Noto+Sans+JP:wght@300;400;500&display=swap');
+
+  :root {
+    --ink:       #1a1a1a;
+    --cinnabar:  #b84c3c;
+    --gold:      #c9972a;
+    --sage:      #5a7a5c;
+    --paper:     #f5f0e8;
+    --paper2:    #ede7d8;
+    --line:      #d4c9b4;
+    --muted:     #8a7e6e;
+    --highlight: #f0e8d0;
+    --rand:      #2a5880;
+    --fs:        1;          /* 文字サイズ倍率（A-/A+で変化） */
+  }
+
+  /* rem基準のレイアウトを一括拡縮（ルートのfont-sizeを倍率で変更） */
+  html { font-size: calc(100% * var(--fs)); }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Noto Sans JP', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  header {
+    width: 100%;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 18px 24px 14px;
+    text-align: center;
+    position: relative;
+  }
+  /* 文字サイズ調整（ダーク背景ヘッダー右上） */
+  .fs-ctrl {
+    position: absolute; top: 12px; right: 12px;
+    display: flex; align-items: center; gap: 5px;
+  }
+  .fs-ctrl button {
+    width: 28px; height: 28px; border: 1px solid rgba(245,240,232,.45);
+    background: rgba(245,240,232,.1); border-radius: 7px; color: var(--paper);
+    font-weight: 600; cursor: pointer; line-height: 1; transition: .15s;
+    font-family: 'Noto Serif JP', serif; padding: 0;
+  }
+  .fs-ctrl button:hover { background: rgba(245,240,232,.22); }
+  .fs-ctrl button:active { background: var(--paper); color: var(--ink); }
+  .fs-ctrl .fs-minus { font-size: 11px; } .fs-ctrl .fs-plus { font-size: 15px; }
+  .fs-ctrl .fs-label { font-size: .62rem; color: var(--line); min-width: 26px; text-align: center; }
+  header h1 {
+    font-family: 'Noto Serif JP', serif;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: .2em;
+  }
+  header p {
+    font-size: .75rem;
+    color: var(--line);
+    margin-top: 4px;
+    letter-spacing: .1em;
+  }
+
+  .wuxing-bar { width: 100%; display: flex; height: 5px; }
+  .wuxing-bar span { flex: 1; }
+  .wuxing-bar .wood  { background: #4a7c4e; }
+  .wuxing-bar .fire  { background: #c04a2a; }
+  .wuxing-bar .earth { background: #b07830; }
+  .wuxing-bar .metal { background: #9098a0; }
+  .wuxing-bar .water { background: #2a5880; }
+
+  .container {
+    width: 100%;
+    max-width: 700px;
+    padding: 20px 16px 60px;
+  }
+
+  /* ── モード切替タブ ── */
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 14px;
+    border: 1.5px solid var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .mode-tab {
+    flex: 1;
+    padding: 10px 4px;
+    border: none;
+    background: transparent;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: .82rem;
+    cursor: pointer;
+    color: var(--muted);
+    transition: all .15s;
+    border-right: 1px solid var(--line);
+  }
+  .mode-tab:last-child { border-right: none; }
+  .mode-tab.active-seq { background: var(--cinnabar); color: white; }
+  .mode-tab.active-rand { background: var(--rand); color: white; }
+  .mode-tab:hover:not(.active-seq):not(.active-rand) { background: var(--highlight); }
+
+  /* ── コントロール ── */
+  .controls {
+    background: var(--paper2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .filter-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .filter-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    border: 1.5px solid var(--line);
+    background: transparent;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: .78rem;
+    cursor: pointer;
+    color: var(--ink);
+    transition: all .15s;
+  }
+  .filter-btn:hover { border-color: var(--cinnabar); color: var(--cinnabar); }
+  .filter-btn.active { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: .8rem;
+    color: var(--muted);
+  }
+  .speed-row input[type=range] { flex: 1; accent-color: var(--cinnabar); }
+
+  /* ── ランダム専用オプション ── */
+  .rand-options {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: .8rem;
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .rand-options label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .rand-options input[type=checkbox] { accent-color: var(--rand); width:15px; height:15px; }
+  #randCount { width: 60px; border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-size: .82rem; background: white; }
+
+  /* ── 再生エリア ── */
+  .play-area {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-primary {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--cinnabar);
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: .9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background .15s;
+  }
+  .btn-primary:hover { background: #9e3c2e; }
+  .btn-primary.rand-mode { background: var(--rand); }
+  .btn-primary.rand-mode:hover { background: #1e4060; }
+
+  .btn-secondary {
+    background: transparent;
+    border: 1.5px solid var(--line);
+    color: var(--muted);
+    padding: 12px 18px;
+    border-radius: 8px;
+    font-family: 'Noto Sans JP', sans-serif;
+    font-size: .85rem;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-secondary:hover { border-color: var(--cinnabar); color: var(--cinnabar); }
+  .btn-secondary.rand-btn:hover { border-color: var(--rand); color: var(--rand); }
+
+  /* ── 現在再生中 ── */
+  .now-playing {
+    background: white;
+    border: 2px solid var(--gold);
+    border-radius: 12px;
+    padding: 18px 20px;
+    margin-bottom: 18px;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 6px;
+    transition: border-color .2s;
+  }
+  .now-playing.rand-border { border-color: var(--rand); }
+  .now-playing .meridian { font-size: .8rem; color: var(--muted); letter-spacing: .1em; }
+  .now-playing .ketsu-type { font-size: 1rem; color: var(--gold); font-weight: 500; }
+  .now-playing .ketsu-type.rand-color { color: var(--rand); }
+  .now-playing .point-name {
+    font-family: 'Noto Serif JP', serif;
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: .12em;
+    line-height: 1.2;
+  }
+  .now-playing .reading { font-size: .85rem; color: var(--muted); letter-spacing: .06em; }
+  .now-playing .rand-label {
+    font-size: .72rem;
+    color: var(--rand);
+    letter-spacing: .1em;
+    margin-bottom: 4px;
+  }
+  .now-playing.idle { border-color: var(--line); }
+  .now-playing.idle .point-name { color: var(--muted); font-size: 1rem; font-family: 'Noto Sans JP', sans-serif; font-weight: 300; }
+
+  /* ── 進捗 ── */
+  .progress-bar { height: 4px; background: var(--line); border-radius: 2px; margin-bottom: 16px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--cinnabar); border-radius: 2px; transition: width .3s ease; }
+  .progress-fill.rand-fill { background: var(--rand); }
+  .progress-label { font-size: .75rem; color: var(--muted); margin-bottom: 14px; text-align: right; }
+
+  /* ── 一覧 ── */
+  .list-section h2 {
+    font-family: 'Noto Serif JP', serif;
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--muted);
+    letter-spacing: .1em;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .point-list { display: flex; flex-direction: column; gap: 3px; }
+  .point-row {
+    display: grid;
+    grid-template-columns: 1fr 90px 80px;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: .8rem;
+    cursor: pointer;
+    transition: background .12s;
+    align-items: center;
+    border: 1px solid transparent;
+  }
+  .point-row:hover { background: var(--highlight); }
+  .point-row.active { background: #fff8e8; border-color: var(--gold); }
+  .point-row.rand-active { background: #e8f0f8; border-color: var(--rand); }
+  .point-row .r-meridian { color: var(--muted); font-size: .72rem; }
+  .point-row .r-type { color: var(--gold); font-size: .75rem; }
+  .point-row .r-name { font-family: 'Noto Serif JP', serif; font-size: .9rem; font-weight: 600; }
+
+  .badge {
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 5px;
+    vertical-align: middle;
+  }
+  .badge.wood  { background: #4a7c4e; }
+  .badge.fire  { background: #c04a2a; }
+  .badge.earth { background: #b07830; }
+  .badge.metal { background: #9098a0; }
+  .badge.water { background: #2a5880; }
+
+  /* ランダム履歴バッジ */
+  .history-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--rand);
+    color: white;
+    font-size: .6rem;
+    font-weight: 600;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
+
+  @media (max-width: 500px) {
+    .point-row { grid-template-columns: 1fr 80px; }
+    .point-row .r-type { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>五 行 穴</h1>
+  <p>井・榮・兪・経・合 — 全60穴 読み上げ</p>
+  <div class="fs-ctrl">
+    <button class="fs-minus" id="fsMinus" title="文字を小さく" aria-label="文字を小さく">A−</button>
+    <span class="fs-label" id="fsLabel">標準</span>
+    <button class="fs-plus" id="fsPlus" title="文字を大きく" aria-label="文字を大きく">A＋</button>
+  </div>
+</header>
+<div class="wuxing-bar">
+  <span class="wood"></span><span class="fire"></span><span class="earth"></span><span class="metal"></span><span class="water"></span>
+</div>
+
+<div class="container">
+
+  <!-- モード切替 -->
+  <div class="mode-tabs">
+    <button class="mode-tab active-seq" id="tabSeq" onclick="setMode('seq')">▶ 順番に読む</button>
+    <button class="mode-tab" id="tabRand" onclick="setMode('rand')">🔀 ランダム</button>
+  </div>
+
+  <!-- コントロール -->
+  <div class="controls">
+    <div class="filter-row" id="filterRow">
+      <span style="font-size:.8rem;color:var(--muted)">絞り込み：</span>
+      <button class="filter-btn active" data-filter="all">全経</button>
+      <button class="filter-btn" data-filter="yin">陰経のみ</button>
+      <button class="filter-btn" data-filter="yang">陽経のみ</button>
+      <button class="filter-btn" data-filter="井">井穴</button>
+      <button class="filter-btn" data-filter="榮">榮穴</button>
+      <button class="filter-btn" data-filter="兪">兪穴</button>
+      <button class="filter-btn" data-filter="経">経穴</button>
+      <button class="filter-btn" data-filter="合">合穴</button>
+    </div>
+
+    <!-- ランダム専用オプション（ランダムモード時のみ表示） -->
+    <div class="rand-options" id="randOptions" style="display:none">
+      <span>出題数：</span>
+      <input type="number" id="randCount" value="60" min="1" max="60">
+      <span>問</span>
+      <label><input type="checkbox" id="chkRepeat"> 重複あり</label>
+    </div>
+
+    <div class="speed-row">
+      <span>速度：</span>
+      <input type="range" id="speedSlider" min="0.6" max="1.4" step="0.1" value="0.9">
+      <span id="speedVal">0.9×</span>
+    </div>
+    <div class="speed-row">
+      <span style="white-space:nowrap">経名後：</span>
+      <input type="range" id="pause1Slider" min="0" max="3" step="0.25" value="1">
+      <span id="pause1Val">1.0秒</span>
+    </div>
+    <div class="speed-row">
+      <span style="white-space:nowrap">穴種後：</span>
+      <input type="range" id="pause2Slider" min="0" max="4" step="0.25" value="2">
+      <span id="pause2Val">2.0秒</span>
+    </div>
+    <div class="speed-row">
+      <span style="white-space:nowrap">穴名後：</span>
+      <input type="range" id="pause3Slider" min="0" max="6" step="0.25" value="3">
+      <span id="pause3Val">3.0秒</span>
+    </div>
+
+    <div class="play-area" id="playArea">
+      <button class="btn-primary" id="btnPlay" onclick="togglePlay()">
+        <svg id="playIcon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><polygon points="3,1 15,8 3,15"/></svg>
+        <span id="btnLabel">再生開始</span>
+      </button>
+      <button class="btn-secondary" id="btnPrev" onclick="prevPoint()">◁ 前へ</button>
+      <button class="btn-secondary" id="btnNext" onclick="nextPoint()">次へ ▷</button>
+      <button class="btn-secondary" onclick="resetPlay()">リセット</button>
+    </div>
+  </div>
+
+  <!-- 現在再生中 -->
+  <div class="now-playing idle" id="nowPlaying">
+    <div class="point-name">再生ボタンを押して開始</div>
+  </div>
+
+  <!-- 進捗 -->
+  <div class="progress-bar"><div class="progress-fill" id="progFill" style="width:0%"></div></div>
+  <div class="progress-label" id="progLabel">0 / 0</div>
+
+  <!-- 一覧 -->
+  <div class="list-section">
+    <h2>
+      <span id="listTitle">穴位一覧（タップで個別再生）</span>
+    </h2>
+    <div class="point-list" id="pointList"></div>
+  </div>
+
+</div>
+
+<script>
+// ──────────────────────────────────────────
+// 文字サイズ調整（A-/A+）：ルートfont-sizeを倍率変更し localStorage に保存
+// ──────────────────────────────────────────
+(function(){
+  const fsSteps=[0.85,1.0,1.15,1.3,1.45];
+  const fsNames=['小','標準','大','特大','最大'];
+  const FS_KEY='karuta-fs-idx';
+  let fsIdx=1;
+  try{ const s=parseInt(localStorage.getItem(FS_KEY),10); if(!isNaN(s)&&s>=0&&s<fsSteps.length) fsIdx=s; }catch(e){}
+  function applyFs(){
+    document.documentElement.style.setProperty('--fs', fsSteps[fsIdx]);
+    const lbl=document.getElementById('fsLabel'); if(lbl) lbl.textContent=fsNames[fsIdx];
+    try{ localStorage.setItem(FS_KEY, fsIdx); }catch(e){}
+  }
+  const minus=document.getElementById('fsMinus'), plus=document.getElementById('fsPlus');
+  if(minus) minus.onclick=()=>{ if(fsIdx>0){ fsIdx--; applyFs(); } };
+  if(plus)  plus.onclick=()=>{ if(fsIdx<fsSteps.length-1){ fsIdx++; applyFs(); } };
+  applyFs();
+})();
+
+// ──────────────────────────────────────────
+// 読み方テーブル
+// ──────────────────────────────────────────
+const TYPE_READ = { 井:"せい", 榮:"えい", 兪:"ゆ", 経:"けい", 合:"ごう" };
+const GO_READ   = { 木:"もく", 火:"か",   土:"ど",  金:"きん", 水:"すい" };
+
+// ──────────────────────────────────────────
+// 五行穴データ (60穴)
+// ──────────────────────────────────────────
+const MERIDIANS = [
+  { kei:"手の太陰肺経",   yomi:"ての　たいいんハイケイ",       yin:true, points:[
+    {type:"井",go:"木",name:"少商",  read:"しょうしょう"},
+    {type:"榮",go:"火",name:"魚際",  read:"ぎょさい"},
+    {type:"兪",go:"土",name:"太淵",  read:"たいえん"},
+    {type:"経",go:"金",name:"経渠",  read:"けいきょ"},
+    {type:"合",go:"水",name:"尺沢",  read:"しゃくたく"},
+  ]},
+  { kei:"手の陽明大腸経", yomi:"ての　ようめい　だいちょうけい",  yin:false, points:[
+    {type:"井",go:"金",name:"商陽",  read:"しょうよう"},
+    {type:"榮",go:"水",name:"二間",  read:"じかん"},
+    {type:"兪",go:"木",name:"三間",  read:"さんかん"},
+    {type:"経",go:"火",name:"陽渓",  read:"ようけい"},
+    {type:"合",go:"土",name:"曲池",  read:"きょくち"},
+  ]},
+  { kei:"足の陽明胃経",   yomi:"あしの　ようめい　いけい",        yin:false, points:[
+    {type:"井",go:"金",name:"厲兌",  read:"れいだ"},
+    {type:"榮",go:"水",name:"内庭",  read:"ないてい"},
+    {type:"兪",go:"木",name:"陥谷",  read:"かんこく"},
+    {type:"経",go:"火",name:"解渓",  read:"かいけい"},
+    {type:"合",go:"土",name:"足三里",read:"あしさんり"},
+  ]},
+  { kei:"足の太陰脾経",   yomi:"あしの　たいいん　ひけい",        yin:true, points:[
+    {type:"井",go:"木",name:"隠白",  read:"いんぱく"},
+    {type:"榮",go:"火",name:"大都",  read:"だいと"},
+    {type:"兪",go:"土",name:"太白",  read:"たいはく"},
+    {type:"経",go:"金",name:"商丘",  read:"しょうきゅう"},
+    {type:"合",go:"水",name:"陰陵泉",read:"いんりょうせん"},
+  ]},
+  { kei:"手の少陰心経",   yomi:"ての　しょういん　しんけい",      yin:true, points:[
+    {type:"井",go:"木",name:"少衝",  read:"しょうしょう"},
+    {type:"榮",go:"火",name:"少府",  read:"しょうふ"},
+    {type:"兪",go:"土",name:"神門",  read:"しんもん"},
+    {type:"経",go:"金",name:"霊道",  read:"れいどう"},
+    {type:"合",go:"水",name:"少海",  read:"しょうかい"},
+  ]},
+  { kei:"手の太陽小腸経", yomi:"ての　たいよう　しょうちょうけい",yin:false, points:[
+    {type:"井",go:"金",name:"少沢",  read:"しょうたく"},
+    {type:"榮",go:"水",name:"前谷",  read:"ぜんこく"},
+    {type:"兪",go:"木",name:"後渓",  read:"こうけい"},
+    {type:"経",go:"火",name:"陽谷",  read:"ようこく"},
+    {type:"合",go:"土",name:"小海",  read:"しょうかい"},
+  ]},
+  { kei:"足の太陽膀胱経", yomi:"あしの　たいよう　ぼうこうけい",  yin:false, points:[
+    {type:"井",go:"金",name:"至陰",  read:"しいん"},
+    {type:"榮",go:"水",name:"足通谷",read:"あしつうこく"},
+    {type:"兪",go:"木",name:"束骨",  read:"そっこつ"},
+    {type:"経",go:"火",name:"崑崙",  read:"こんろん"},
+    {type:"合",go:"土",name:"委中",  read:"いちゅう"},
+  ]},
+  { kei:"足の少陰腎経",   yomi:"あしの　しょういん　じんけい",    yin:true, points:[
+    {type:"井",go:"木",name:"湧泉",  read:"ゆうせん"},
+    {type:"榮",go:"火",name:"然谷",  read:"ねんこく"},
+    {type:"兪",go:"土",name:"太渓",  read:"たいけい"},
+    {type:"経",go:"金",name:"復溜",  read:"ふくりゅう"},
+    {type:"合",go:"水",name:"陰谷",  read:"いんこく"},
+  ]},
+  { kei:"手の厥陰心包経", yomi:"ての　けついん　しんぽうけい",    yin:true, points:[
+    {type:"井",go:"木",name:"中衝",  read:"ちゅうしょう"},
+    {type:"榮",go:"火",name:"労宮",  read:"ろうきゅう"},
+    {type:"兪",go:"土",name:"大陵",  read:"だいりょう"},
+    {type:"経",go:"金",name:"間使",  read:"かんし"},
+    {type:"合",go:"水",name:"曲沢",  read:"きょくたく"},
+  ]},
+  { kei:"手の少陽三焦経", yomi:"ての　しょうよう　さんしょうけい",yin:false, points:[
+    {type:"井",go:"金",name:"関衝",  read:"かんしょう"},
+    {type:"榮",go:"水",name:"液門",  read:"えきもん"},
+    {type:"兪",go:"木",name:"中渚",  read:"ちゅうしょ"},
+    {type:"経",go:"火",name:"支溝",  read:"しこう"},
+    {type:"合",go:"土",name:"天井",  read:"てんせい"},
+  ]},
+  { kei:"足の少陽胆経",   yomi:"あしの　しょうよう　たんけい",    yin:false, points:[
+    {type:"井",go:"金",name:"足竅陰",read:"あしきょういん"},
+    {type:"榮",go:"水",name:"侠渓",  read:"きょうけい"},
+    {type:"兪",go:"木",name:"足臨泣",read:"あしりんきゅう"},
+    {type:"経",go:"火",name:"陽輔",  read:"ようほ"},
+    {type:"合",go:"土",name:"陽陵泉",read:"ようりょうせん"},
+  ]},
+  { kei:"足の厥陰肝経",   yomi:"あしの　けついん　かんけい",      yin:true, points:[
+    {type:"井",go:"木",name:"大敦",  read:"だいとん"},
+    {type:"榮",go:"火",name:"行間",  read:"こうかん"},
+    {type:"兪",go:"土",name:"太衝",  read:"たいしょう"},
+    {type:"経",go:"金",name:"中封",  read:"ちゅうほう"},
+    {type:"合",go:"水",name:"曲泉",  read:"きょくせん"},
+  ]},
+];
+
+// フラットリスト
+let allPoints = [];
+MERIDIANS.forEach(m => {
+  m.points.forEach(p => {
+    allPoints.push({ ...p, kei: m.kei, keiYomi: m.yomi, yin: m.yin });
+  });
+});
+
+// ── 状態 ──
+let filteredPoints = [...allPoints];
+let currentIdx = 0;
+let isPlaying = false;
+let stopFlag = false;
+let currentMode = 'seq';  // 'seq' | 'rand'
+let randQueue = [];        // ランダムモード用キュー
+let randPos = 0;           // キュー内の現在位置
+let playEpoch = 0;         // 再生世代トークン（古い再生処理を破棄するため）
+let randStarted = false;   // 現在のランダム1問が再生開始済みか
+
+// ── 速度・間隔スライダー ──
+const speedSlider = document.getElementById('speedSlider');
+const speedVal = document.getElementById('speedVal');
+speedSlider.addEventListener('input', () => {
+  speedVal.textContent = parseFloat(speedSlider.value).toFixed(1) + '×';
+});
+
+const pause1Slider = document.getElementById('pause1Slider');
+const pause1Val    = document.getElementById('pause1Val');
+pause1Slider.addEventListener('input', () => {
+  pause1Val.textContent = parseFloat(pause1Slider.value).toFixed(2).replace(/\.?0+$/, '') + '秒';
+});
+
+const pause2Slider = document.getElementById('pause2Slider');
+const pause2Val    = document.getElementById('pause2Val');
+pause2Slider.addEventListener('input', () => {
+  pause2Val.textContent = parseFloat(pause2Slider.value).toFixed(2).replace(/\.?0+$/, '') + '秒';
+});
+
+const pause3Slider = document.getElementById('pause3Slider');
+const pause3Val    = document.getElementById('pause3Val');
+pause3Slider.addEventListener('input', () => {
+  pause3Val.textContent = parseFloat(pause3Slider.value).toFixed(2).replace(/\.?0+$/, '') + '秒';
+});
+
+// ── 五行クラス ──
+function goClass(go) {
+  return {木:'wood',火:'fire',土:'earth',金:'metal',水:'water'}[go] || '';
+}
+
+// ── モード切替 ──
+function setMode(mode) {
+  currentMode = mode;
+  stopAll();
+  resetNowPlaying();
+  currentIdx = 0;
+  randQueue = [];
+  randPos = 0;
+  randStarted = false;
+
+  const tabSeq  = document.getElementById('tabSeq');
+  const tabRand = document.getElementById('tabRand');
+  const randOpts = document.getElementById('randOptions');
+  const btnPrev = document.getElementById('btnPrev');
+  const btnNext = document.getElementById('btnNext');
+  const progFill = document.getElementById('progFill');
+
+  if (mode === 'seq') {
+    tabSeq.className  = 'mode-tab active-seq';
+    tabRand.className = 'mode-tab';
+    randOpts.style.display = 'none';
+    btnPrev.style.display = '';
+    btnNext.style.display = '';
+    progFill.classList.remove('rand-fill');
+    document.getElementById('listTitle').textContent = '穴位一覧（タップで個別再生）';
+  } else {
+    tabSeq.className  = 'mode-tab';
+    tabRand.className = 'mode-tab active-rand';
+    randOpts.style.display = 'flex';
+    btnPrev.style.display = 'none';
+    btnNext.style.display = '';
+    progFill.classList.add('rand-fill');
+    document.getElementById('listTitle').textContent = '穴位一覧';
+    document.getElementById('btnNext').textContent = '次の1問 ▷';
+  }
+  if (mode === 'seq') {
+    document.getElementById('btnNext').textContent = '次へ ▷';
+  }
+
+  document.getElementById('btnPlay').className =
+    mode === 'rand' ? 'btn-primary rand-mode' : 'btn-primary';
+  document.getElementById('btnNext').className =
+    mode === 'rand' ? 'btn-secondary rand-btn' : 'btn-secondary';
+
+  updateProgress();
+  renderList();
+}
+
+// ── フィルタ ──
+document.getElementById('filterRow').querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilter(btn.dataset.filter);
+  });
+});
+function applyFilter(f) {
+  if (f === 'all')  filteredPoints = [...allPoints];
+  else if (f === 'yin')  filteredPoints = allPoints.filter(p => p.yin);
+  else if (f === 'yang') filteredPoints = allPoints.filter(p => !p.yin);
+  else filteredPoints = allPoints.filter(p => p.type === f);
+  currentIdx = 0;
+  randQueue = [];
+  randPos = 0;
+  randStarted = false;
+  stopAll();
+  renderList();
+  updateProgress();
+  resetNowPlaying();
+}
+
+// ── ランダムキュー生成 ──
+function buildRandQueue() {
+  const count = Math.min(
+    parseInt(document.getElementById('randCount').value) || 10,
+    filteredPoints.length * 3  // 上限
+  );
+  const allowRepeat = document.getElementById('chkRepeat').checked;
+  const src = [...filteredPoints];
+  randQueue = [];
+
+  if (allowRepeat) {
+    for (let i = 0; i < count; i++) {
+      randQueue.push(src[Math.floor(Math.random() * src.length)]);
+    }
+  } else {
+    // Fisher-Yates shuffle
+    const pool = [...src];
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    // 必要数だけ取り出し（問題数 > 穴数ならループ）
+    for (let i = 0; i < count; i++) {
+      randQueue.push(pool[i % pool.length]);
+    }
+  }
+  randPos = 0;
+}
+
+// ── 一覧レンダリング ──
+function renderList() {
+  const list = document.getElementById('pointList');
+  list.innerHTML = '';
+  filteredPoints.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'point-row';
+    row.id = 'row-' + i;
+    row.innerHTML = `
+      <div>
+        <div class="r-meridian">${p.kei}</div>
+        <div><span class="badge ${goClass(p.go)}"></span><span class="r-name">${p.name}</span></div>
+      </div>
+      <div class="r-type">${p.type}${p.go}穴</div>
+      <div style="font-size:.72rem;color:var(--muted)">${p.read}</div>
+    `;
+    row.addEventListener('click', () => {
+      if (currentMode === 'seq') jumpTo(i);
+    });
+    list.appendChild(row);
+  });
+}
+
+async function jumpTo(i) {
+  stopAll();
+  stopFlag = false;
+  const myEpoch = ++playEpoch;
+  currentIdx = i;
+  isPlaying = true;
+  setPauseIcon();
+  updateNowPlaying(filteredPoints[i], null);
+  updateProgress();
+  await speakOne(filteredPoints[i], i, null);
+  if (myEpoch !== playEpoch) return;
+  isPlaying = false;
+  setPlayIcon();
+}
+
+// ── NowPlaying ──
+function updateNowPlaying(p, randInfo) {
+  const np = document.getElementById('nowPlaying');
+  np.className = 'now-playing' + (currentMode === 'rand' ? ' rand-border' : '');
+  const typeColor = currentMode === 'rand' ? 'rand-color' : '';
+  const randBadge = randInfo ? `<div class="rand-label">🔀 ランダム ${randInfo}</div>` : '';
+  np.innerHTML = `
+    ${randBadge}
+    <div class="meridian">${p.kei}</div>
+    <div class="ketsu-type ${typeColor}">
+      <span class="badge ${goClass(p.go)}" style="width:10px;height:10px"></span>
+      ${p.type}${p.go}穴
+    </div>
+    <div class="point-name">${p.name}</div>
+    <div class="reading">${p.keiYomi.replace(/　/g,'').replace(/[ァ-ヶ]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60))}　${TYPE_READ[p.type]}${GO_READ[p.go]}けつ　${p.read}</div>
+  `;
+  // ハイライト
+  document.querySelectorAll('.point-row').forEach(r => r.classList.remove('active','rand-active'));
+  const flatIdx = filteredPoints.indexOf(p);
+  const row = document.getElementById('row-' + flatIdx);
+  if (row) {
+    row.classList.add(currentMode === 'rand' ? 'rand-active' : 'active');
+  }
+}
+
+function resetNowPlaying() {
+  const np = document.getElementById('nowPlaying');
+  np.className = 'now-playing idle';
+  np.innerHTML = '<div class="point-name">再生ボタンを押して開始</div>';
+  document.querySelectorAll('.point-row').forEach(r => r.classList.remove('active','rand-active'));
+}
+
+// ── 進捗 ──
+function updateProgress() {
+  if (currentMode === 'seq') {
+    const total = filteredPoints.length;
+    const pct = total ? (currentIdx / total) * 100 : 0;
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('progLabel').textContent = `${currentIdx} / ${total}`;
+  } else {
+    const total = randQueue.length;
+    const pct = total ? (randPos / total) * 100 : 0;
+    document.getElementById('progFill').style.width = pct + '%';
+    document.getElementById('progLabel').textContent =
+      total ? `${randPos} / ${total} 問` : 'ランダム待機中';
+  }
+}
+
+// ── 音声合成 ──
+function speak(text, rate) {
+  return new Promise(resolve => {
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = 'ja-JP';
+    utt.rate = rate;
+    utt.onend = resolve;
+    utt.onerror = resolve;
+    speechSynthesis.speak(utt);
+  });
+}
+function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+async function speakOne(p, flatIdx, onDone) {
+  const myEpoch = playEpoch;
+  const stale = () => stopFlag || myEpoch !== playEpoch;
+  const rate  = parseFloat(speedSlider.value);
+  const gap1  = parseFloat(pause1Slider.value) * 1000;   // 経名後
+  const gap2  = parseFloat(pause2Slider.value) * 1000;   // 穴種後
+  const typeRead = TYPE_READ[p.type] || p.type;
+  const goRead   = GO_READ[p.go]     || p.go;
+  const keiText  = p.keiYomi;                            // 経名
+  const typeText = `${typeRead}　${goRead}けつ`;            // 穴種
+  const nameText = p.read;                               // 穴名
+
+  await speak(keiText, rate);
+  if (stale()) return;
+  if (gap1 > 0) await delay(gap1);
+  if (stale()) return;
+  await speak(typeText, rate);
+  if (stale()) return;
+  if (gap2 > 0) await delay(gap2);
+  if (stale()) return;
+  await speak(nameText, rate);
+  if (stale()) return;
+  if (onDone) onDone();
+}
+
+// ── 連続再生（順番） ──
+async function playSeq() {
+  stopFlag = false;
+  const myEpoch = ++playEpoch;
+  while (currentIdx < filteredPoints.length && !stopFlag && myEpoch === playEpoch) {
+    const p = filteredPoints[currentIdx];
+    updateNowPlaying(p, null);
+    updateProgress();
+    await speakOne(p, currentIdx, null);
+    if (stopFlag || myEpoch !== playEpoch) break;
+    const gap3 = parseFloat(pause3Slider.value) * 1000;
+    if (gap3 > 0) await delay(gap3);
+    if (stopFlag || myEpoch !== playEpoch) break;
+    currentIdx++;
+    updateProgress();
+  }
+  if (myEpoch !== playEpoch) return;
+  if (!stopFlag) {
+    currentIdx = 0;
+    updateProgress();
+    resetNowPlaying();
+  }
+  isPlaying = false;
+  setPlayIcon();
+}
+
+// ── 連続再生（ランダム） ──
+async function playRand() {
+  // 既存キューが残っている場合は再生成せず途中から再開する
+  if (randQueue.length === 0 || randPos >= randQueue.length) {
+    buildRandQueue();
+  }
+  if (randQueue.length === 0) return;
+  stopFlag = false;
+  const myEpoch = ++playEpoch;
+  while (randPos < randQueue.length && !stopFlag && myEpoch === playEpoch) {
+    const p = randQueue[randPos];
+    updateNowPlaying(p, `${randPos + 1} / ${randQueue.length}`);
+    updateProgress();
+    randStarted = true;
+    await speakOne(p, -1, null);
+    if (stopFlag || myEpoch !== playEpoch) break;
+    const gap3 = parseFloat(pause3Slider.value) * 1000;
+    if (gap3 > 0) await delay(gap3);
+    if (stopFlag || myEpoch !== playEpoch) break;
+    randPos++;
+    randStarted = false;
+    updateProgress();
+  }
+  if (myEpoch !== playEpoch) return;
+  if (!stopFlag) {
+    randPos = 0;
+    randStarted = false;
+    updateProgress();
+    resetNowPlaying();
+  }
+  isPlaying = false;
+  setPlayIcon();
+}
+
+// ── 次の1問（ランダム） ──
+async function nextRand() {
+  stopFlag = false;
+  const myEpoch = ++playEpoch;
+  if (randQueue.length === 0) buildRandQueue();
+  // 一度でも再生していれば次へ進める（初回押下も含め常に1問前進）
+  if (randStarted) {
+    randPos++;
+  }
+  randStarted = true;
+  if (randPos >= randQueue.length) {
+    randPos = 0;
+    buildRandQueue();
+  }
+  const p = randQueue[randPos];
+  updateNowPlaying(p, `${randPos + 1} / ${randQueue.length}`);
+  updateProgress();
+  isPlaying = true;
+  setPauseIcon();
+  await speakOne(p, -1, null);
+  if (myEpoch !== playEpoch) return;
+  isPlaying = false;
+  setPlayIcon();
+}
+
+function setPlayIcon() {
+  document.getElementById('playIcon').innerHTML = '<polygon points="3,1 15,8 3,15"/>';
+  document.getElementById('btnLabel').textContent = '再生開始';
+}
+function setPauseIcon() {
+  document.getElementById('playIcon').innerHTML = '<rect x="3" y="1" width="4" height="14"/><rect x="9" y="1" width="4" height="14"/>';
+  document.getElementById('btnLabel').textContent = '一時停止';
+}
+
+function stopAll() {
+  stopFlag = true;
+  playEpoch++;
+  speechSynthesis.cancel();
+  isPlaying = false;
+  setPlayIcon();
+}
+
+function togglePlay() {
+  if (isPlaying) {
+    stopAll();
+  } else {
+    isPlaying = true;
+    setPauseIcon();
+    if (currentMode === 'seq') playSeq();
+    else playRand();
+  }
+}
+
+function prevPoint() {
+  if (currentMode !== 'seq') return;
+  stopAll();
+  currentIdx = Math.max(0, currentIdx - 1);
+  isPlaying = true;
+  setPauseIcon();
+  playSeq();
+}
+
+function nextPoint() {
+  stopAll();
+  if (currentMode === 'seq') {
+    currentIdx = Math.min(filteredPoints.length - 1, currentIdx + 1);
+    isPlaying = true;
+    setPauseIcon();
+    playSeq();
+  } else {
+    nextRand();
+  }
+}
+
+function resetPlay() {
+  stopAll();
+  currentIdx = 0;
+  randQueue = [];
+  randPos = 0;
+  randStarted = false;
+  updateProgress();
+  resetNowPlaying();
+}
+
+// 初期化
+renderList();
+updateProgress();
+</script>
+</body>
+</html>

@@ -1,0 +1,3984 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<script>
+/* ===== 統合アプリ用ガード（自動挿入・元コードは未変更）=====
+   iframe 内で動くとき、各アプリ独自の Service Worker 登録／キャッシュ操作／
+   バージョン確認を無効化し、キャッシュとバージョン管理を親（統合ホーム）へ
+   一元化します。localStorage（学習データ・カルテ等）はそのまま使えます。 */
+(function(){
+  try{
+    if (window.top === window.self) return; // 単体起動時は何もしない
+
+    // 1) Service Worker を無害なスタブに
+    var swStub = {
+      register:function(){ return Promise.reject(new Error('SW disabled in integrated app')); },
+      getRegistration:function(){ return Promise.resolve(undefined); },
+      getRegistrations:function(){ return Promise.resolve([]); },
+      addEventListener:function(){}, removeEventListener:function(){},
+      get controller(){ return null; },
+      ready:new Promise(function(){})
+    };
+    try{ Object.defineProperty(navigator,'serviceWorker',{get:function(){return swStub;},configurable:true}); }catch(e){}
+
+    // 2) Cache Storage を無効化（子アプリが親のキャッシュを消さないように）
+    var noop0=function(){return Promise.resolve();};
+    function neutralizeCaches(){
+      try{
+        var cacheStub={
+          open:function(){return Promise.resolve({addAll:noop0,add:noop0,put:noop0,
+            match:function(){return Promise.resolve(undefined);},delete:function(){return Promise.resolve(false);},
+            keys:function(){return Promise.resolve([]);}});},
+          keys:function(){return Promise.resolve([]);},
+          delete:function(){return Promise.resolve(false);},
+          match:function(){return Promise.resolve(undefined);},
+          has:function(){return Promise.resolve(false);}
+        };
+        try{ Object.defineProperty(window,'caches',{get:function(){return cacheStub;},configurable:true}); }
+        catch(e){
+          // defineProperty が不可なら既存オブジェクトのメソッドを直接無害化
+          if(window.caches){
+            try{ window.caches.keys=function(){return Promise.resolve([]);}; }catch(_){}
+            try{ window.caches.delete=function(){return Promise.resolve(false);}; }catch(_){}
+            try{ window.caches.open=cacheStub.open; }catch(_){}
+          }
+        }
+      }catch(e){}
+    }
+    neutralizeCaches();
+
+    // 3) アプリ独自の「更新」ボタンを隠す（親の「更新確認」に一本化）
+    var css='#update-check-btn{display:none !important;}';
+    function injectCss(){ try{ var s=document.createElement('style'); s.textContent=css; (document.head||document.documentElement).appendChild(s);}catch(e){} }
+    if(document.head){ injectCss(); }
+    else { document.addEventListener('DOMContentLoaded', injectCss); }
+  }catch(e){}
+
+
+  })();
+</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="国試学習">
+<meta name="theme-color" content="#2c5f7c">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<title>はり師きゅう師 国試学習アプリ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root { --fs: 1; }  /* 文字サイズ倍率（A-/A+で変化） */
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Meiryo', sans-serif; background: #f5f7fa; color: #2c3e50; line-height: 1.6; font-size: calc(16px * var(--fs)); }
+  body { min-height: 100vh; padding-bottom: 80px; }
+
+  /* ヘッダー */
+  header { background: #2c5f7c; color: white; padding: 14px 16px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  header h1 { font-size: calc(18px * var(--fs)); font-weight: 600; padding-right: 150px; }
+  header .subtitle { font-size: calc(11px * var(--fs)); opacity: 0.85; margin-top: 2px; padding-right: 150px; }
+  /* 文字サイズ調整（ヘッダー右上・📖ボタンの左） */
+  .fs-ctrl { position: absolute; top: 11px; right: 92px; display: flex; align-items: center; gap: 4px; }
+  .fs-ctrl button { width: 28px; height: 28px; border: 1px solid rgba(255,255,255,.55); background: rgba(255,255,255,.14); color: #fff; border-radius: 8px; cursor: pointer; line-height: 1; font-weight: 600; font-family: inherit; padding: 0; transition: .15s; }
+  .fs-ctrl button:active { background: #fff; color: #2c5f7c; }
+  .fs-ctrl .fs-minus { font-size: 11px; } .fs-ctrl .fs-plus { font-size: 15px; }
+  .fs-ctrl .fs-label { font-size: 9px; color: rgba(255,255,255,.85); min-width: 24px; text-align: center; }
+
+  /* メインコンテナ */
+  .container { max-width: 600px; margin: 0 auto; padding: 16px; }
+
+  /* カード */
+  .card { background: white; border-radius: 12px; padding: 20px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .card h2 { font-size: calc(15px * var(--fs)); color: #2c5f7c; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #e8eef3; }
+
+  /* 画面切替 */
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ホーム画面 */
+  .home-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
+  .stat-box { background: white; border-radius: 10px; padding: 12px 8px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+  .stat-box .num { font-size: calc(22px * var(--fs)); font-weight: 700; color: #2c5f7c; }
+  .stat-box .lbl { font-size: calc(11px * var(--fs)); color: #7a8a99; margin-top: 2px; }
+
+  .menu-btn { display: block; width: 100%; padding: 16px; background: white; border: none; border-radius: 12px; margin-bottom: 10px; font-size: calc(16px * var(--fs)); text-align: left; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.05); transition: all 0.15s; color: #2c3e50; }
+  .menu-btn:active { transform: scale(0.98); background: #eef4f8; }
+  .menu-btn .icon { font-size: calc(22px * var(--fs)); margin-right: 12px; vertical-align: middle; }
+  .menu-btn .label { font-weight: 600; vertical-align: middle; }
+  .menu-btn .desc { font-size: calc(12px * var(--fs)); color: #7a8a99; margin-top: 4px; padding-left: 36px; }
+
+  /* 問題画面 */
+  .question-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px; font-size: calc(12px * var(--fs)); color: #7a8a99; }
+  .badge { display: inline-block; background: #2c5f7c; color: white; padding: 3px 10px; border-radius: 12px; font-size: calc(11px * var(--fs)); font-weight: 600; }
+  .badge.subject { background: #5a8fa8; }
+  .badge.exam-type { background: #8b5a3c; }
+  .badge.exam-type.amashi { background: #5a3c8b; }
+  .question-meta .q-no { margin-left: auto; }
+  .question-text { font-size: calc(16px * var(--fs)); line-height: 1.7; margin-bottom: 16px; padding: 4px 0; }
+
+  .choices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
+  .choice { display: flex; align-items: flex-start; padding: 12px 14px; background: #f5f7fa; border: 2px solid transparent; border-radius: 10px; cursor: pointer; transition: all 0.15s; font-size: calc(15px * var(--fs)); }
+  .choice:active { transform: scale(0.99); }
+  .choice.selected { background: #e3f0f7; border-color: #2c5f7c; }
+  .choice.correct { background: #d4edda; border-color: #28a745; }
+  .choice.incorrect { background: #f8d7da; border-color: #dc3545; }
+  .choice .num { font-weight: 700; min-width: 24px; color: #2c5f7c; }
+  .choice.correct .num, .choice.incorrect .num { color: inherit; }
+
+  .answer-area { display: none; padding: 16px; background: #fafbfc; border-radius: 10px; margin-bottom: 12px; border-left: 4px solid #2c5f7c; }
+  .answer-area.show { display: block; }
+  .answer-area h3 { font-size: calc(13px * var(--fs)); color: #2c5f7c; margin-bottom: 6px; font-weight: 600; }
+  .answer-area .content { font-size: calc(14px * var(--fs)); color: #4a5a6a; min-height: 24px; }
+  .answer-area .empty { color: #aab5bf; font-style: italic; }
+
+  textarea { width: 100%; padding: 10px; border: 1.5px solid #d4dde4; border-radius: 8px; font-family: inherit; font-size: calc(14px * var(--fs)); resize: vertical; min-height: 60px; }
+  textarea:focus { outline: none; border-color: #2c5f7c; }
+
+  .btn { display: inline-block; padding: 12px 20px; background: #2c5f7c; color: white; border: none; border-radius: 10px; font-size: calc(15px * var(--fs)); font-weight: 600; cursor: pointer; transition: all 0.15s; }
+  .btn:active { transform: scale(0.97); }
+  .btn:disabled { background: #aab5bf; cursor: not-allowed; }
+  .btn.full { width: 100%; }
+  .btn.secondary { background: #6c8499; }
+  .btn.danger { background: #c0504d; }
+  .btn.outline { background: white; color: #2c5f7c; border: 2px solid #2c5f7c; }
+  .btn.mute { background: #fff8e1; color: #8b6914; border: 2px solid #ffc107; }
+  .btn.mute.active { background: #ffc107; color: #212529; border-color: #ffc107; }
+
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { flex: 1; }
+
+  /* 結果バナー */
+  .result-banner { padding: 12px 16px; border-radius: 10px; margin-bottom: 12px; font-weight: 600; text-align: center; font-size: calc(15px * var(--fs)); }
+  .result-banner.correct { background: #d4edda; color: #155724; }
+  .result-banner.incorrect { background: #f8d7da; color: #721c24; }
+  .result-banner.skipped { background: #fff3cd; color: #856404; }
+
+  /* 設定画面 */
+  .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #e8eef3; }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-row .lbl { font-size: calc(14px * var(--fs)); }
+  .setting-row .desc { font-size: calc(11px * var(--fs)); color: #7a8a99; margin-top: 2px; }
+
+  /* スイッチ */
+  .switch { position: relative; width: 50px; height: 28px; flex-shrink: 0; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #cbd5dd; border-radius: 28px; transition: 0.2s; }
+  .slider:before { position: absolute; content: ""; height: 22px; width: 22px; left: 3px; bottom: 3px; background: white; border-radius: 50%; transition: 0.2s; }
+  input:checked + .slider { background: #2c5f7c; }
+  input:checked + .slider:before { transform: translateX(22px); }
+
+  select { padding: 8px 12px; border: 1.5px solid #d4dde4; border-radius: 8px; font-size: calc(14px * var(--fs)); background: white; }
+
+  /* ボトムナビ */
+  .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #e8eef3; display: flex; justify-content: space-around; padding: 8px 0; z-index: 100; }
+  .nav-btn { flex: 1; background: none; border: none; padding: 6px 0; cursor: pointer; color: #7a8a99; font-size: calc(11px * var(--fs)); display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .nav-btn.active { color: #2c5f7c; font-weight: 600; }
+  .nav-btn .nav-icon { font-size: calc(20px * var(--fs)); }
+
+  /* トースト */
+  .toast { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: rgba(44, 62, 80, 0.95); color: white; padding: 10px 20px; border-radius: 24px; font-size: calc(14px * var(--fs)); z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  /* モーダル */
+  .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 300; align-items: center; justify-content: center; padding: 20px; }
+  .modal-bg.show { display: flex; }
+  .modal { background: white; border-radius: 14px; padding: 24px; max-width: 400px; width: 100%; max-height: 90vh; overflow-y: auto; }
+  .modal h2 { font-size: calc(17px * var(--fs)); margin-bottom: 14px; color: #2c5f7c; }
+  .modal p { font-size: calc(14px * var(--fs)); color: #4a5a6a; margin-bottom: 16px; }
+
+  /* 履歴/科目別表示 */
+  .subject-list { display: flex; flex-direction: column; gap: 6px; }
+  .subject-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; background: #f5f7fa; border-radius: 8px; cursor: pointer; }
+  .subject-item:active { background: #e8eef3; }
+  .subject-item .name { font-size: calc(14px * var(--fs)); }
+  .subject-item .count { font-size: calc(12px * var(--fs)); color: #7a8a99; background: white; padding: 2px 8px; border-radius: 10px; }
+
+  /* メッセージ */
+  .empty-state { text-align: center; padding: 40px 20px; color: #7a8a99; }
+  .empty-state .ico { font-size: calc(48px * var(--fs)); margin-bottom: 12px; opacity: 0.5; }
+  .empty-state p { font-size: calc(14px * var(--fs)); }
+
+  .progress-info { background: #eef4f8; padding: 10px 14px; border-radius: 8px; margin-bottom: 12px; font-size: calc(13px * var(--fs)); color: #2c5f7c; text-align: center; }
+
+  /* 本試験モード */
+  .exam-option-list { display: flex; flex-direction: column; gap: 4px; }
+  .radio-row { display: flex; align-items: center; gap: 10px; padding: 8px 4px; cursor: pointer; font-size: calc(14px * var(--fs)); }
+  .radio-row input[type="radio"] { width: 18px; height: 18px; accent-color: #2c5f7c; }
+  .exam-header { position: sticky; top: 60px; background: #2c5f7c; color: white; padding: 10px 14px; border-radius: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; z-index: 50; }
+  .exam-progress { font-size: calc(13px * var(--fs)); }
+  .exam-progress span { display: inline-block; }
+  #exam-section-label { background: rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px; margin-right: 6px; font-weight: 600; }
+  .exam-timer { font-size: calc(18px * var(--fs)); font-weight: 700; font-family: monospace; }
+  .exam-timer.warning { color: #ffd54f; }
+  .exam-timer.critical { color: #ef5350; animation: pulse 1s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.6; } }
+  .exam-overview-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 4px; }
+  .exam-overview-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; border: 1px solid #ccc; background: white; border-radius: 4px; font-size: calc(11px * var(--fs)); cursor: pointer; transition: all 0.1s; }
+  .exam-overview-cell:active { transform: scale(0.95); }
+  .exam-overview-cell.answered { background: #d4edda; border-color: #28a745; }
+  .exam-overview-cell.bookmarked { background: #fff3cd; border-color: #ffa726; }
+  .exam-overview-cell.answered.bookmarked { background: linear-gradient(135deg, #d4edda 50%, #fff3cd 50%); }
+  .exam-overview-cell.current { box-shadow: 0 0 0 2px #2c5f7c; font-weight: 700; }
+  .subject-result-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eef4f8; font-size: calc(13px * var(--fs)); }
+  .subject-result-row:last-child { border-bottom: none; }
+  .subject-result-bar { flex: 1; height: 6px; background: #e8eef3; border-radius: 3px; margin: 0 12px; overflow: hidden; max-width: 120px; }
+  .subject-result-bar-fill { height: 100%; background: #2c5f7c; transition: width 0.5s; }
+
+  /* 今日の演習 */
+  .daily-count-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .daily-count-btn { padding: 14px 0; background: white; border: 2px solid #d4dde4; border-radius: 10px; font-size: calc(15px * var(--fs)); font-weight: 600; cursor: pointer; transition: all 0.15s; color: #2c3e50; }
+  .daily-count-btn:active { transform: scale(0.97); }
+  .daily-count-btn.active { background: #2c5f7c; color: white; border-color: #2c5f7c; }
+  .daily-subject-row { display: flex; align-items: center; gap: 10px; padding: 10px 8px; border-radius: 8px; cursor: pointer; transition: background 0.1s; }
+  .daily-subject-row:active { background: #eef4f8; }
+  .daily-subject-row input[type="checkbox"] { width: 20px; height: 20px; accent-color: #2c5f7c; flex-shrink: 0; }
+  .daily-subject-row .name { flex: 1; font-size: calc(14px * var(--fs)); }
+  .daily-subject-row .info { font-size: calc(11px * var(--fs)); color: #7a8a99; white-space: nowrap; }
+  .daily-section-label { font-size: calc(11px * var(--fs)); color: #7a8a99; font-weight: 600; margin: 10px 4px 4px; letter-spacing: 1px; }
+
+  /* 検索結果カード */
+  .search-result-card {
+    background: white; border-radius: 10px; padding: 14px 16px;
+    margin-bottom: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    cursor: pointer; transition: all 0.15s;
+    border-left: 3px solid #5a8fa8;
+  }
+  .search-result-card:active { transform: scale(0.99); background: #f5f7fa; }
+  .search-result-card .meta { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+  .search-result-card .q-text { font-size: calc(14px * var(--fs)); line-height: 1.6; color: #2c3e50; }
+  .search-result-card .q-text mark {
+    background: #fff176; color: inherit; border-radius: 2px; padding: 0 1px;
+  }
+  .search-result-card .choices-preview { font-size: calc(12px * var(--fs)); color: #7a8a99; margin-top: 5px; }
+  .search-result-card .choices-preview mark {
+    background: #fff176; color: inherit; border-radius: 2px; padding: 0 1px;
+  }
+
+  /* 紙試験結果入力 */
+  .paper-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .paper-cell { display: flex; flex-direction: column; align-items: center; padding: 4px; border: 1px solid #d4dde4; border-radius: 6px; background: white; }
+  .paper-cell .qno { font-size: calc(10px * var(--fs)); color: #7a8a99; font-weight: 600; margin-bottom: 2px; }
+  .paper-cell .marks { display: flex; gap: 2px; }
+  .paper-cell .mark-btn { flex: 1; padding: 6px 0; min-width: 28px; border: 1px solid #d4dde4; background: white; border-radius: 4px; font-size: calc(13px * var(--fs)); font-weight: bold; cursor: pointer; transition: all 0.1s; color: #7a8a99; }
+  .paper-cell .mark-btn:active { transform: scale(0.95); }
+  .paper-cell .mark-btn.correct.selected { background: #4caf50; color: white; border-color: #4caf50; }
+  .paper-cell .mark-btn.incorrect.selected { background: #f44336; color: white; border-color: #f44336; }
+  .paper-section-head { font-size: calc(12px * var(--fs)); font-weight: 600; color: #2c5f7c; margin: 12px 0 6px; padding: 4px 8px; background: #eef4f8; border-radius: 4px; }
+  .paper-session-card { background: #fff8e1; border: 1px solid #ffa726; border-radius: 12px; padding: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s; }
+  .paper-session-card:active { transform: scale(0.99); }
+  .paper-session-card .title { font-weight: 600; color: #e65100; margin-bottom: 4px; }
+  .paper-session-card .meta { font-size: calc(12px * var(--fs)); color: #5d4037; }
+  .paper-session-card .progress-mini { font-size: calc(11px * var(--fs)); color: #5d4037; margin-top: 4px; }
+
+  /* 選択肢メモボタン (正/誤/?) */
+  .choice-note-wrap { display: flex; gap: 4px; margin-left: 10px; flex-shrink: 0; align-self: center; }
+  .choice-note-btn {
+    width: 36px; height: 36px; border-radius: 8px;
+    border: 1.5px solid #d4dde4; background: white;
+    font-size: calc(14px * var(--fs)); font-weight: 700; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    color: #9aa8b5; transition: all 0.12s; flex-shrink: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .choice-note-btn:active { transform: scale(0.90); }
+  .choice-note-btn.active-sei  { background: #d4edda; border-color: #28a745; color: #155724; }
+  .choice-note-btn.active-go   { background: #f8d7da; border-color: #dc3545; color: #721c24; }
+  .choice-note-btn.active-hate { background: #fff3cd; border-color: #ffc107; color: #856404; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="screen-title">国試学習アプリ</h1>
+  <div class="subtitle" id="screen-subtitle"></div>
+  <div class="fs-ctrl">
+    <button class="fs-minus" id="fsMinus" title="文字を小さく" aria-label="文字を小さく">A−</button>
+    <span class="fs-label" id="fsLabel">標準</span>
+    <button class="fs-plus" id="fsPlus" title="文字を大きく" aria-label="文字を大きく">A＋</button>
+  </div>
+  <button onclick="openManual()" title="使用説明書" style="position:absolute;top:12px;right:14px;border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.14);color:#fff;border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;white-space:nowrap;font-family:inherit;">📖 説明書</button>
+</header>
+
+<div class="container">
+
+  <!-- ホーム画面 -->
+  <div class="screen active" id="screen-home">
+    <div id="paper-sessions-notice" style="display:none;">
+      <!-- ここに紙試験の結果入力待ちセッションが表示される -->
+    </div>
+
+    <div class="home-stats" style="grid-template-columns: repeat(3, 1fr);">
+      <div class="stat-box">
+        <div class="num" id="stat-total">0</div>
+        <div class="lbl">総問題数</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="stat-answered">0</div>
+        <div class="lbl">解答済み</div>
+      </div>
+      <div class="stat-box">
+        <div class="num" id="stat-due" style="color: #ff9800;">0</div>
+        <div class="lbl">復習対象</div>
+      </div>
+
+    </div>
+
+    <button class="menu-btn" onclick="goDailySetup()">
+      <span class="icon">📅</span><span class="label">今日の演習</span>
+      <div class="desc">全科目から分散して未出題優先で出題</div>
+    </button>
+    <button class="menu-btn" onclick="startMode('review')">
+      <span class="icon">🔄</span><span class="label">復習モード</span>
+      <div class="desc">忘却曲線に基づき出題</div>
+    </button>
+
+    <button class="menu-btn" onclick="goSubjectSelect()">
+      <span class="icon">📚</span><span class="label">科目別演習</span>
+      <div class="desc">科目を選んで集中学習</div>
+    </button>
+    <button class="menu-btn" onclick="goExamSetup()" style="background: linear-gradient(to right, #2c5f7c, #5a8fa8); color: white;">
+      <span class="icon">📝</span><span class="label" style="color: white;">本試験形式モード</span>
+      <div class="desc" style="color: rgba(255,255,255,0.85);">本番同様180問/160問で実施</div>
+    </button>
+    <button class="menu-btn" onclick="goSearch()">
+      <span class="icon">🔍</span><span class="label">問題検索</span>
+      <div class="desc">問題文・選択肢からキーワード検索</div>
+    </button>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 0;">
+      <button class="menu-btn" onclick="goMemoList()" style="margin-bottom: 0;">
+        <span class="icon">📝</span><span class="label" style="font-size: 14px;">メモ一覧</span>
+        <div class="desc">メモを書いた問題</div>
+      </button>
+      <button class="menu-btn" onclick="goMutedList()" style="margin-bottom: 0;">
+        <span class="icon">🚫</span><span class="label" style="font-size: 14px;">出題除外一覧</span>
+        <div class="desc">除外設定した問題</div>
+      </button>
+    </div>
+  </div>
+
+  <!-- メモ一覧画面 -->
+  <div class="screen" id="screen-memo-list">
+    <div class="card">
+      <h2>📝 メモ一覧</h2>
+      <div style="font-size: 12px; color: #4a5a6a; margin-bottom: 10px;">メモを記入した問題の一覧です。タップすると問題を確認できます。</div>
+      <div id="home-memo-list">
+        <div style="color: #7a8a99; text-align: center; padding: 20px 0;">メモはありません</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 出題除外一覧画面 -->
+  <div class="screen" id="screen-muted-list">
+    <div class="card">
+      <h2>🚫 出題除外一覧</h2>
+      <div style="font-size: 12px; color: #4a5a6a; margin-bottom: 10px;">「今後出題しない」に設定した問題の一覧です。タップすると問題を確認・除外解除できます。</div>
+      <div id="home-muted-list">
+        <div style="color: #7a8a99; text-align: center; padding: 20px 0;">出題除外はありません</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 問題検索画面 -->
+  <div class="screen" id="screen-search">
+    <div class="card">
+      <h2>🔍 問題検索</h2>
+
+      <!-- 検索対象の選択 -->
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f5f7fa; border: 2px solid #d4dde4; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.15s;" id="search-target-q-label">
+          <input type="radio" name="search-target" value="question" checked id="search-target-q" style="accent-color: #2c5f7c; width: 16px; height: 16px;">
+          問題文から検索
+        </label>
+        <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f5f7fa; border: 2px solid #d4dde4; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.15s;" id="search-target-c-label">
+          <input type="radio" name="search-target" value="choices" id="search-target-c" style="accent-color: #2c5f7c; width: 16px; height: 16px;">
+          選択肢から検索
+        </label>
+      </div>
+
+      <!-- 検索ヒント -->
+      <div style="font-size: 12px; color: #7a8a99; background: #f5f7fa; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; line-height: 1.7;">
+        例：<strong style="color: #2c5f7c;">橈骨神経</strong>　または　<strong style="color: #2c5f7c;">橈骨 神経</strong>（スペース区切りでAND検索）<br>
+        全角・半角、大文字・小文字はどちらでもヒットします（<strong>3mmHg</strong> ＝ <strong>３ｍｍＨＧ</strong>）<br>
+        ※ 50件以上ヒットする場合は結果を表示できません。ワードを追加して絞り込んでください。
+      </div>
+
+      <!-- 検索ボックス -->
+      <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+        <input type="text" id="search-input"
+          placeholder="検索ワードを入力"
+          style="flex: 1; padding: 12px 14px; border: 2px solid #d4dde4; border-radius: 10px; font-size: 15px; font-family: inherit; outline: none; transition: border-color 0.15s;"
+          oninput="onSearchInput()"
+          onfocus="this.style.borderColor='#2c5f7c'"
+          onblur="this.style.borderColor='#d4dde4'"
+        >
+        <button class="btn" onclick="execSearch()" style="padding: 12px 18px; flex-shrink: 0;">検索</button>
+      </div>
+
+      <!-- メッセージ/ステータス -->
+      <div id="search-status" style="font-size: 13px; color: #7a8a99; text-align: center; padding: 4px 0; min-height: 24px;"></div>
+    </div>
+
+    <!-- 結果リスト -->
+    <div id="search-results" style="display: none;">
+      <div style="font-size: 12px; color: #7a8a99; margin: 0 4px 8px; font-weight: 600;" id="search-result-label"></div>
+      <div id="search-result-list"></div>
+    </div>
+  </div>
+
+  <!-- 科目選択画面 -->
+  <div class="screen" id="screen-subjects">
+    <div class="card">
+      <h2>科目を選択</h2>
+      <div class="subject-list" id="subject-list"></div>
+    </div>
+  </div>
+
+  <!-- 今日の演習セットアップ画面 -->
+  <div class="screen" id="screen-daily-setup">
+    <div class="card">
+      <h2>① 出題する問題数</h2>
+      <div class="daily-count-row" id="daily-count-options" style="grid-template-columns: repeat(5, 1fr);">
+        <button class="daily-count-btn" data-count="10" onclick="selectDailyCount(10)">10問</button>
+        <button class="daily-count-btn active" data-count="20" onclick="selectDailyCount(20)">20問</button>
+        <button class="daily-count-btn" data-count="30" onclick="selectDailyCount(30)">30問</button>
+        <button class="daily-count-btn" data-count="40" onclick="selectDailyCount(40)">40問</button>
+        <button class="daily-count-btn" data-count="50" onclick="selectDailyCount(50)">50問</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 出題方法</h2>
+      <div style="font-size: 12px; color: #4a5a6a; line-height: 1.8; padding: 12px; background: #f5f7fa; border-radius: 6px;">
+        <strong>全科目（不適切問題を含む）から、可能な限り均等に分散して出題</strong>します。<br>
+        未出題の問題を優先的に出題し、不足する場合は出題済み問題から復習日が近いものを補充します。<br>
+        試験種別フィルター（設定画面）の対象範囲のみが出題対象となります。
+      </div>
+    </div>
+
+    <button class="btn full" onclick="startDailyMode()" style="font-size: 16px; padding: 16px;" id="daily-start-btn">演習を開始</button>
+  </div>
+
+  <!-- 本試験形式モード セットアップ画面 -->
+  <div class="screen" id="screen-exam-setup">
+    <div class="card">
+      <h2>① 試験種別</h2>
+      <div class="exam-option-list" id="exam-type-options">
+        <label class="radio-row">
+          <input type="radio" name="exam-type" value="hari_kyu" checked>
+          <span>はり師きゅう師(180問・AM90問+PM90問)</span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="exam-type" value="amashi">
+          <span>あマ指(160問・AM80問+PM80問)</span>
+        </label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>② 出題方法</h2>
+      <div style="font-size: 12px; color: #4a5a6a; margin-bottom: 8px; padding: 8px; background: #f5f7fa; border-radius: 6px;">
+        いずれの場合も、本試験の科目構成(はりきゅう180問/あマ指160問)に従って科目別に問題が抽出されます。
+      </div>
+      <div class="exam-option-list">
+        <label class="radio-row">
+          <input type="radio" name="exam-source" value="year" onchange="updateExamSourceUI()">
+          <span>年度を選んで出題(その年度内から科目別抽出)</span>
+        </label>
+        <div id="year-select-wrap" style="padding: 8px 0 8px 32px; display: none;">
+          <select id="exam-year-select" style="width: 100%;" disabled>
+            <option value="">取り込み済みの年度から選択...</option>
+          </select>
+        </div>
+        <label class="radio-row">
+          <input type="radio" name="exam-source" value="random" checked onchange="updateExamSourceUI()">
+          <span>全範囲からランダム出題(全年度から科目別抽出)</span>
+        </label>
+        <label class="radio-row">
+          <input type="radio" name="exam-source" value="original" onchange="updateExamSourceUI()">
+          <span>AI作成問題出題</span>
+        </label>
+        <div id="original-select-wrap" style="padding: 8px 0 8px 32px; display: none;">
+          <select id="exam-original-select" style="width: 100%;" disabled>
+            <option value="">追加分から選択...</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>③ 実施方法</h2>
+      <div class="exam-option-list">
+        <label class="radio-row">
+          <input type="radio" name="exam-method" value="paper" checked>
+          <span>📄 紙で実施(PDFを印刷)</span>
+        </label>
+        <div style="padding: 0 0 8px 32px; font-size: 12px; color: #7a8a99;">
+          問題用紙PDFを出力して印刷します。自己採点後、結果を入力できます。
+        </div>
+        <label class="radio-row">
+          <input type="radio" name="exam-method" value="screen">
+          <span>📱 画面で実施(時間制限付き)</span>
+        </label>
+        <div style="padding: 0 0 8px 32px; font-size: 12px; color: #7a8a99;">
+          AM・PMそれぞれ2時間10分の制限時間で解きます。
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>④ オプション</h2>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">学習履歴に反映</div>
+          <div class="desc" id="exam-record-history-desc">画面実施時のみ自動反映。紙で実施した場合は試験後に画面で結果入力が必要です。</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="exam-record-history">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">選択肢の順序をランダム化</div>
+          <div class="desc">画面実施・PDF両方に適用</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="exam-shuffle-choices">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">出題除外問題を含まない</div>
+          <div class="desc">「今後出題しない」に設定した問題を除外（科目の問題数が減る場合あり）</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="exam-exclude-muted">
+          <span class="slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <button class="btn full" onclick="startExamMode()" style="font-size: 16px; padding: 16px;">本試験を開始</button>
+  </div>
+
+  <!-- 本試験 画面実施モード -->
+  <div class="screen" id="screen-exam-running">
+    <div class="exam-header">
+      <div class="exam-progress">
+        <span id="exam-section-label">AM</span>
+        <span id="exam-progress-text">問1 / 90</span>
+      </div>
+      <div class="exam-timer" id="exam-timer">2:10:00</div>
+    </div>
+
+    <div class="card">
+      <div class="question-meta">
+        <span class="badge exam-type" id="exam-q-type">はりきゅう</span>
+        <span class="badge" id="exam-q-year">第34回</span>
+        <span class="badge subject" id="exam-q-subject">医療概論</span>
+        <span class="q-no" id="exam-q-no">問1</span>
+      </div>
+      <div class="question-text" id="exam-q-text"></div>
+      <div class="choices" id="exam-q-choices"></div>
+
+      <label style="display: flex; align-items: center; gap: 8px; padding: 10px; background: #fff8e1; border-radius: 8px; cursor: pointer; margin-bottom: 12px;">
+        <input type="checkbox" id="exam-bookmark">
+        <span style="font-size: 14px;">🔖 後で見直す</span>
+      </label>
+
+      <div class="btn-row">
+        <button class="btn outline" onclick="examPrevQuestion()" id="exam-prev-btn">← 前へ</button>
+        <button class="btn" onclick="examNextQuestion()" id="exam-next-btn" style="flex: 2;">次へ →</button>
+      </div>
+      <button class="btn outline full" onclick="goExamOverview()" style="margin-top: 8px;">📋 問題一覧</button>
+    </div>
+  </div>
+
+  <!-- 本試験 問題一覧画面 -->
+  <div class="screen" id="screen-exam-overview">
+    <div class="card">
+      <h2>問題一覧</h2>
+      <div style="margin-bottom: 12px; font-size: 13px; color: #4a5a6a;">
+        <span style="display: inline-block; width: 12px; height: 12px; background: #d4edda; border: 1px solid #28a745; border-radius: 3px; margin-right: 4px;"></span>解答済み
+        &nbsp;
+        <span style="display: inline-block; width: 12px; height: 12px; background: white; border: 1px solid #ccc; border-radius: 3px; margin-right: 4px;"></span>未解答
+        &nbsp;
+        <span style="display: inline-block; width: 12px; height: 12px; background: #fff3cd; border: 1px solid #ffa726; border-radius: 3px; margin-right: 4px;"></span>後で見直す
+      </div>
+      <div id="exam-overview-grid" class="exam-overview-grid"></div>
+      <div class="btn-row" style="margin-top: 16px;">
+        <button class="btn outline" onclick="goBackToExam()" style="flex: 1;">← 戻る</button>
+        <button class="btn danger" onclick="confirmFinishExam()" style="flex: 1;">試験終了</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 本試験 結果画面 -->
+  <div class="screen" id="screen-exam-result">
+    <div class="card" style="background: linear-gradient(135deg, #2c5f7c, #5a8fa8); color: white;">
+      <h2 style="color: white; border-bottom-color: rgba(255,255,255,0.3);">試験結果</h2>
+      <div style="text-align: center; padding: 16px 0;">
+        <div style="font-size: 14px; opacity: 0.9;">得点</div>
+        <div style="font-size: 48px; font-weight: 700;" id="result-score">0 / 180</div>
+        <div style="font-size: 18px;" id="result-percentage">0%</div>
+        <div style="font-size: 16px; margin-top: 8px;" id="result-judgment">―</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>科目別正答率</h2>
+      <div id="result-subject-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>所要時間</h2>
+      <div style="font-size: 24px; text-align: center; font-weight: 600; color: #2c5f7c;" id="result-time">―</div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn outline" onclick="reviewExamWrong()" style="flex: 1;">間違いを復習</button>
+      <button class="btn" onclick="goHome()" style="flex: 1;">ホームへ</button>
+    </div>
+  </div>
+
+  <!-- 問題画面 -->
+  <div class="screen" id="screen-question">
+    <div class="progress-info" id="progress-info">問題 1 / 10</div>
+    <div class="card">
+      <div class="question-meta">
+        <span class="badge exam-type" id="q-exam-type">はりきゅう</span>
+        <span class="badge" id="q-year">第30回</span>
+        <span class="badge subject" id="q-subject">解剖学</span>
+        <span class="q-no" id="q-no">問1</span>
+      </div>
+      <div class="question-text" id="q-text"></div>
+      <div class="choices" id="q-choices"></div>
+
+      <div class="result-banner" id="result-banner" style="display:none;"></div>
+
+      <div class="answer-area" id="answer-area">
+        <h3>📖 解説</h3>
+        <div class="content" id="explanation-content"></div>
+      </div>
+
+      <div class="btn-row" id="action-buttons">
+        <button class="btn full" id="submit-btn" onclick="submitAnswer()" disabled>解答する</button>
+      </div>
+
+      <div class="card" id="memo-card" style="display:none; padding: 12px; margin-top: 12px; margin-bottom: 0; background: #fffbf0;">
+        <h3 style="font-size: 13px; color: #8b6914; margin-bottom: 6px;">✏️ メモ</h3>
+        <textarea id="memo-area" placeholder="自分用のメモを書く..."></textarea>
+        <button class="btn outline" onclick="saveMemo()" style="margin-top: 8px; font-size: 13px; padding: 6px 14px;">メモを保存</button>
+      </div>
+
+      <button class="btn mute full" id="mute-btn" onclick="toggleMuteQuestion()" style="display:none; margin-top: 8px; font-size: 13px;">🚫 今後出題しない</button>
+      <button class="btn full" id="next-btn" onclick="nextQuestion()" style="display:none; margin-top: 8px;">次の問題 →</button>
+      <button class="btn outline full" id="back-to-list-btn" onclick="backToList()" style="display:none; margin-top: 8px; font-size: 13px;">← 一覧に戻る</button>
+    </div>
+  </div>
+
+  <!-- 紙試験結果入力画面 -->
+  <div class="screen" id="screen-paper-input">
+    <div class="card" style="background: #fff8e1; border-left: 4px solid #ffa726;">
+      <h2 style="color: #e65100; border-bottom: none; margin-bottom: 8px;">📝 紙試験の結果入力</h2>
+      <div id="paper-input-meta" style="font-size: 13px; color: #5d4037;"></div>
+      <div class="btn-row" style="margin-top: 12px;">
+        <button class="btn outline" onclick="reprintPaperFromSession()" style="flex: 1; font-size: 13px;">🖨️ 問題用紙を再印刷</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>採点入力</h2>
+      <div style="font-size: 13px; color: #4a5a6a; margin-bottom: 12px;">
+        各問題ごとに〇か×をタップしてください。タップして連続入力できます。
+      </div>
+      <div class="btn-row" style="margin-bottom: 12px;">
+        <button class="btn outline" onclick="paperMarkAll(true)" style="flex: 1; font-size: 13px;">全て〇</button>
+        <button class="btn outline" onclick="paperMarkAll(false)" style="flex: 1; font-size: 13px;">全て×</button>
+        <button class="btn outline" onclick="paperClearAll()" style="flex: 1; font-size: 13px;">未入力に</button>
+      </div>
+
+      <div id="paper-input-summary" style="padding: 10px 14px; background: #eef4f8; border-radius: 8px; margin-bottom: 12px; font-size: 14px; text-align: center;"></div>
+
+      <div id="paper-input-grid"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn outline" onclick="confirmDeletePaperSession()" style="flex: 1;">🗑️ 削除</button>
+      <button class="btn" onclick="submitPaperResult()" style="flex: 2;">採点して結果を見る</button>
+    </div>
+  </div>
+
+  <!-- 紙試験結果入力画面 終 -->
+  <!-- 統計画面 -->
+  <div class="screen" id="screen-stats">
+    <div class="card">
+      <h2>📊 全体サマリー</h2>
+      <div class="home-stats" style="margin-bottom: 4px;">
+        <div class="stat-box">
+          <div class="num" id="stats-total-q">0</div>
+          <div class="lbl">取り込み済み</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="stats-answered-q">0</div>
+          <div class="lbl">解答経験</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="stats-accuracy">―</div>
+          <div class="lbl">正答率</div>
+        </div>
+      </div>
+      <div class="home-stats" style="margin-top: 8px;">
+        <div class="stat-box">
+          <div class="num" id="stats-mastered" style="color: #4caf50;">0</div>
+          <div class="lbl">習得済み</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="stats-due-today" style="color: #ff9800;">0</div>
+          <div class="lbl">今日復習</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="stats-not-tried">0</div>
+          <div class="lbl">未挑戦</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📅 直近の学習</h2>
+      <div id="stats-recent-list" style="font-size: 13px;">
+        <div style="color: #7a8a99; text-align: center; padding: 20px 0;">学習履歴がまだありません</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>🔥 復習の進度</h2>
+      <div style="font-size: 13px; color: #4a5a6a; margin-bottom: 12px;">忘却曲線レベルごとの問題数(数値が高いほど習得が進んでいる)</div>
+      <div id="stats-interval-list"></div>
+    </div>
+
+    <div class="card">
+      <h2>📚 科目別 学習進度</h2>
+      <div style="font-size: 12px; color: #4a5a6a; margin-bottom: 10px;">忘却曲線レベル別の問題分布。色が右に進むほど習得が進んでいます。</div>
+      <div id="stats-subject-list">
+        <div style="color: #7a8a99; text-align: center; padding: 20px 0;">学習履歴がまだありません</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>📆 年度別 学習進度</h2>
+      <div id="stats-year-list">
+        <div style="color: #7a8a99; text-align: center; padding: 20px 0;">学習履歴がまだありません</div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 設定画面 -->
+  <div class="screen" id="screen-settings">
+
+    <div class="card">
+      <h2>出題設定</h2>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">選択肢のランダム表示</div>
+          <div class="desc">毎回、選択肢の順序を入れ替えます</div>
+        </div>
+        <label class="switch">
+          <input type="checkbox" id="set-shuffle-choices" onchange="updateSetting('shuffleChoices', this.checked)">
+          <span class="slider"></span>
+        </label>
+      </div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">試験種別</div>
+          <div class="desc">出題対象を絞り込み</div>
+        </div>
+        <select id="set-exam-type" onchange="updateSetting('examType', this.value)">
+          <option value="all">すべて</option>
+          <option value="hari_kyu">はり師きゅう師</option>
+          <option value="amashi">あマ指</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>出題しない年度</h2>
+      <div style="font-size: 13px; color: #4a5a6a; margin-bottom: 10px;">チェックした年度の問題は、今日の演習・科目別演習・復習モード・本試験形式モード・問題検索・メモ一覧・出題除外一覧のすべてで表示されません。</div>
+      <div id="settings-year-list" style="max-height: 400px; overflow-y: auto;">
+        <div style="color: #7a8a99; text-align: center; padding: 16px;">読み込み中...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>問題データ</h2>
+      <div id="setting-q-version" style="font-size:13px;color:#4a5a6a;margin-bottom:10px;">問題データ: —</div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">問題データを取り込む / 更新する</div>
+          <div class="desc">配布された questions.json を選択（端末に保存・オフライン可）</div>
+        </div>
+        <button class="btn" onclick="reimportQuestionData()" style="padding: 8px 14px; font-size: 13px;">📥 取り込み</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>学習履歴の管理</h2>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">学習履歴をリセット</div>
+          <div class="desc">問題データは保持されます</div>
+        </div>
+        <button class="btn danger" onclick="confirmReset()" style="padding: 8px 14px; font-size: 13px;">🗑️ 削除</button>
+      </div>
+      <div style="font-size:12px;color:#7a8a99;margin-top:10px;line-height:1.7;">バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- 説明書モーダル -->
+<div class="modal-bg" id="manual-modal" style="padding: 0; align-items: stretch;">
+  <div style="background: white; width: 100%; max-width: 640px; margin: 0 auto; display: flex; flex-direction: column; height: 100%;">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #2c5f7c; color: white; flex-shrink: 0;">
+      <span style="font-size: 16px; font-weight: 600; flex: 1;">📖 使用説明書</span>
+      <button onclick="closeManual()" style="background: rgba(255,255,255,0.2); color: white; border: none; padding: 6px 14px; border-radius: 8px; font-size: 14px; cursor: pointer;">✕ 閉じる</button>
+    </div>
+    <iframe id="manual-frame" src="" style="flex: 1; border: none; width: 100%;" title="使用説明書"></iframe>
+  </div>
+</div>
+
+<!-- ボトムナビ -->
+<div class="bottom-nav">
+  <button class="nav-btn active" id="nav-home" onclick="goHome()">
+    <span class="nav-icon">🏠</span>
+    <span>ホーム</span>
+  </button>
+  <button class="nav-btn" id="nav-stats" onclick="goStats()">
+    <span class="nav-icon">📊</span>
+    <span>統計</span>
+  </button>
+  <button class="nav-btn" id="nav-settings" onclick="goSettings()">
+    <span class="nav-icon">⚙️</span>
+    <span>設定</span>
+  </button>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<!-- 確認モーダル -->
+<div class="modal-bg" id="modal">
+  <div class="modal">
+    <h2 id="modal-title">確認</h2>
+    <p id="modal-text"></p>
+    <div class="btn-row">
+      <button class="btn outline" onclick="closeModal()">キャンセル</button>
+      <button class="btn danger" id="modal-confirm">実行</button>
+    </div>
+  </div>
+</div>
+
+<script>
+
+//=========================================================
+// 文字サイズ調整（A-/A+）：--fs を拡縮し localStorage に保存
+//=========================================================
+(function(){
+  const fsSteps=[0.85,1.0,1.15,1.3,1.45];
+  const fsNames=['小','標準','大','特大','最大'];
+  const FS_KEY='kokushi-fs-idx';
+  let fsIdx=1;
+  try{ const s=parseInt(localStorage.getItem(FS_KEY),10); if(!isNaN(s)&&s>=0&&s<fsSteps.length) fsIdx=s; }catch(e){}
+  function applyFs(){
+    document.documentElement.style.setProperty('--fs', fsSteps[fsIdx]);
+    const lbl=document.getElementById('fsLabel'); if(lbl) lbl.textContent=fsNames[fsIdx];
+    try{ localStorage.setItem(FS_KEY, fsIdx); }catch(e){}
+  }
+  const minus=document.getElementById('fsMinus'), plus=document.getElementById('fsPlus');
+  if(minus) minus.onclick=()=>{ if(fsIdx>0){ fsIdx--; applyFs(); } };
+  if(plus)  plus.onclick=()=>{ if(fsIdx<fsSteps.length-1){ fsIdx++; applyFs(); } };
+  applyFs();
+})();
+
+//=========================================================
+// アプリバージョン（更新年月日）
+const APP_VERSION = '2026.6.3';
+
+// [A] 75e69c9fe38080e897a4e69cac (識別定数)
+// バージョン比較（新しい方が大きい → 正の数を返す）
+function compareVersion(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if ((pa[i] || 0) !== (pb[i] || 0)) return (pa[i] || 0) - (pb[i] || 0);
+  }
+  return 0;
+}
+
+// 問題データ（外部 data/questions.json から起動時に読み込む）
+// 旧 BUNDLED_QUESTIONS の代わりに loadQuestionData() で取得する
+let BUNDLED_QUESTIONS = [];
+let QUESTION_DATA_VERSION = null;
+
+// 問題データの正規化（choice1~4形式 と choices配列形式の両方に対応）
+function normalizeQuestion(q, i) {
+  // id: 小文字 id または大文字 ID → なければ自動生成
+  const id = q.id || q.ID ||
+    (q.examType + '_' + q.year + '_' + q.questionNo);
+
+  // choices: 配列形式 or choice1~4形式の両方に対応
+  let choices;
+  if (Array.isArray(q.choices) && q.choices.length > 0) {
+    choices = q.choices;
+  } else {
+    choices = [
+      String(q.choice1 || ''),
+      String(q.choice2 || ''),
+      String(q.choice3 || ''),
+      String(q.choice4 || ''),
+    ];
+  }
+
+  // correctAnswers: 数値配列 or 文字列（セミコロン・カンマ区切り対応）
+  let correctAnswers;
+  if (Array.isArray(q.correctAnswers)) {
+    correctAnswers = q.correctAnswers.map(Number);
+  } else {
+    const ca = String(q.correctAnswers || '1').trim();
+    const sep = ca.includes(';') ? ';' : ',';
+    correctAnswers = ca.split(sep).map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
+    if (correctAnswers.length === 0) correctAnswers = [1];
+  }
+
+  // year: 数値に変換できれば数値、できなければ文字列のまま
+  let year = q.year;
+  const yearNum = Number(year);
+  if (!isNaN(yearNum) && String(year).trim() !== '') year = yearNum;
+
+  return {
+    id,
+    examType:     q.examType     || '',
+    year,
+    questionNo:   q.questionNo   || (i + 1),
+    subject:      q.subject      || '',
+    section:      q.section      || 'AM',
+    questionText: q.questionText || '',
+    choices,
+    correctAnswers,
+    explanation:  q.explanation  || '',
+    sourceUrl:    q.sourceUrl    || '',
+    sourcePdf:    q.sourcePdf    || '',
+  };
+}
+
+// 問題データの読み込み：取り込み済みデータ（IndexedDB）から読む（オフライン可）。
+//  ・端末に取り込み済みなら、それを使う（通信しない）。
+//  ・未取り込みなら空のまま（init で取り込み案内を表示）。
+async function loadQuestionData() {
+  try {
+    if (!db) return false;
+    const rec = await dbGet('questionData', 'current');
+    if (rec && Array.isArray(rec.questions) && rec.questions.length > 0) {
+      BUNDLED_QUESTIONS = rec.questions.map(normalizeQuestion);
+      QUESTION_DATA_VERSION = rec.questionDataVersion || null;
+      return true;
+    }
+    return false;
+  } catch (e) {
+    console.warn('問題データの読み込みに失敗:', e.message);
+    return false;
+  }
+}
+
+// 取り込んだ JSON を端末（IndexedDB）に保存する
+async function saveQuestionData(json) {
+  const questions = (json.questions || []);
+  await dbPut('questionData', {
+    key: 'current',
+    questions,
+    questionDataVersion: json.questionDataVersion || null,
+    importedAt: new Date().toISOString(),
+  });
+}
+
+// ファイル選択で問題データ（questions.json）を取り込む
+function importQuestionFile(ev) {
+  const file = ev && ev.target && ev.target.files && ev.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    try {
+      const json = JSON.parse(reader.result);
+      const arr = json && json.questions;
+      if (!Array.isArray(arr) || arr.length === 0) {
+        alert('問題データが見つかりませんでした。\nquestions.json を選択してください。');
+        return;
+      }
+      await saveQuestionData(json);
+      BUNDLED_QUESTIONS = arr.map(normalizeQuestion);
+      QUESTION_DATA_VERSION = json.questionDataVersion || null;
+      state.questions = BUNDLED_QUESTIONS;
+      // バージョン表示を更新
+      const el = document.getElementById('data-version-label');
+      if (el) el.textContent = '問題データ: ver.' + (QUESTION_DATA_VERSION || '—') + '（' + BUNDLED_QUESTIONS.length + '問）';
+      if (typeof showToast === 'function') showToast(BUNDLED_QUESTIONS.length + '問を取り込みました', 2500);
+      // 取り込み案内が出ていれば通常画面へ復帰
+      if (typeof afterDataReady === 'function') afterDataReady();
+      else location.reload();
+    } catch (e) {
+      alert('ファイルの読み込みに失敗しました: ' + e.message);
+    } finally {
+      if (ev && ev.target) ev.target.value = '';
+    }
+  };
+  reader.readAsText(file);
+}
+
+//=========================================================
+
+//=========================================================
+const DB_NAME = 'StudyAppDB';
+const DB_VERSION = 5; // questionData ストア追加（取り込んだ問題データを端末保存）
+let db = null;
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => { db = req.result; resolve(db); };
+    req.onupgradeneeded = (e) => {
+      const d = e.target.result;
+      // 旧バージョンの questions ストア（個別保存）は使わない
+      if (d.objectStoreNames.contains('questions')) {
+        d.deleteObjectStore('questions');
+      }
+      // 取り込んだ問題データ一式を1レコードで保存（key='current'）
+      if (!d.objectStoreNames.contains('questionData')) {
+        d.createObjectStore('questionData', { keyPath: 'key' });
+      }
+      if (!d.objectStoreNames.contains('progress')) {
+        d.createObjectStore('progress', { keyPath: 'questionId' });
+      }
+      if (!d.objectStoreNames.contains('memos')) {
+        d.createObjectStore('memos', { keyPath: 'questionId' });
+      }
+      if (!d.objectStoreNames.contains('settings')) {
+        d.createObjectStore('settings', { keyPath: 'key' });
+      }
+      if (!d.objectStoreNames.contains('paperSessions')) {
+        d.createObjectStore('paperSessions', { keyPath: 'id' });
+      }
+      if (!d.objectStoreNames.contains('mutedQuestions')) {
+        d.createObjectStore('mutedQuestions', { keyPath: 'questionId' });
+      }
+    };
+  });
+}
+
+function dbDelete(store, key) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbGet(store, key) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbGetAll(store) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readonly');
+    const req = tx.objectStore(store).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbPut(store, value) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).put(value);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+function dbClear(store) {
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store, 'readwrite');
+    const req = tx.objectStore(store).clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+//=========================================================
+// アプリ状態
+//=========================================================
+const state = {
+  questions: [],
+  progress: {},
+  memos: {},
+  settings: { shuffleChoices: false, examType: 'all', excludeYears: [] },
+  mutedQuestions: {},
+  currentMode: null,
+  currentSubject: null,
+  questionQueue: [],
+  currentIndex: 0,
+  currentQuestion: null,
+  currentChoiceOrder: [],
+  selectedChoice: null,
+  isAnswered: false,
+  skipProgressSave: false
+};
+
+//=========================================================
+// 初期化
+//=========================================================
+async function init() {
+  await openDB();
+  // 端末の保存をできるだけ消えにくくする（対応ブラウザのみ）
+  try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
+
+  // 取り込み済みの問題データを端末から読み込む（オフライン可）
+  const hasData = await loadQuestionData();
+  if (!hasData || BUNDLED_QUESTIONS.length === 0) {
+    // 未取り込み：取り込み案内を表示（通信は不要）
+    showImportPrompt();
+    return;
+  }
+  state.questions = BUNDLED_QUESTIONS;
+  await afterDataReady();
+}
+
+// 問題データが用意できた後の初期化（取り込み直後にも呼べるよう分離）
+async function afterDataReady() {
+  hideImportPrompt();
+  state.questions = BUNDLED_QUESTIONS;
+
+  // 進捗・メモ・設定読み込み
+  const progressList = await dbGetAll('progress');
+  state.progress = {};
+  progressList.forEach(p => state.progress[p.questionId] = p);
+
+  state.mutedQuestions = {};
+  const mutedList = await dbGetAll('mutedQuestions');
+  mutedList.forEach(m => state.mutedQuestions[m.questionId] = m);
+
+  state.memos = {};
+  const memoList = await dbGetAll('memos');
+  memoList.forEach(m => state.memos[m.questionId] = m.text);
+
+  const settingShuffle = await dbGet('settings', 'shuffleChoices');
+  if (settingShuffle) state.settings.shuffleChoices = settingShuffle.value;
+  const settingExam = await dbGet('settings', 'examType');
+  if (settingExam) state.settings.examType = settingExam.value;
+
+  const settingExclude = await dbGet('settings', 'excludeYears');
+  if (settingExclude) state.settings.excludeYears = settingExclude.value || [];
+
+  const sc = document.getElementById('set-shuffle-choices');
+  if (sc) sc.checked = state.settings.shuffleChoices;
+  const se = document.getElementById('set-exam-type');
+  if (se) se.value = state.settings.examType;
+
+  const dvl = document.getElementById('data-version-label');
+  if (dvl) dvl.textContent = '問題データ: ver.' + (QUESTION_DATA_VERSION || '—') + '（' + state.questions.length + '問）';
+
+  updateHomeStats();
+  renderSettingsYearList();
+}
+
+// 問題データ取り込み案内オーバーレイ
+function showImportPrompt() {
+  let ov = document.getElementById('import-prompt');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'import-prompt';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 24px;background:#f4efe4;font-family:sans-serif;color:#2c3e50;';
+    ov.innerHTML =
+      '<div style="font-size:46px;margin-bottom:14px;">📥</div>' +
+      '<h2 style="margin-bottom:12px;font-size:20px;">問題データを取り込んでください</h2>' +
+      '<p style="color:#7a8a99;line-height:1.8;max-width:30em;margin-bottom:20px;">' +
+      '初回のみ、配布された <b>questions.json</b> を取り込みます。<br>' +
+      '取り込んだデータは端末内に保存され、次回からはオフラインでも使えます。</p>' +
+      '<button id="import-prompt-btn" style="border:none;background:#2c5f7c;color:#fff;font-size:15px;font-weight:700;padding:13px 26px;border-radius:11px;cursor:pointer;">📂 questions.json を選ぶ</button>' +
+      '<input type="file" id="import-prompt-file" accept="application/json,.json" style="display:none">' +
+      '<p style="color:#9aa;font-size:12px;margin-top:18px;">データはホーム画面の「データ取り込み」配布元から入手できます。</p>';
+    document.body.appendChild(ov);
+    ov.querySelector('#import-prompt-btn').onclick = () => ov.querySelector('#import-prompt-file').click();
+    ov.querySelector('#import-prompt-file').onchange = importQuestionFile;
+  }
+  ov.style.display = 'flex';
+}
+function hideImportPrompt() {
+  const ov = document.getElementById('import-prompt');
+  if (ov) ov.style.display = 'none';
+}
+
+//=========================================================
+// 今日の演習モード
+//=========================================================
+const dailyState = {
+  totalCount: 20
+};
+
+function goDailySetup() {
+  const filtered = filterByExamType(state.questions);
+  if (filtered.length === 0) {
+    alert('該当する問題がありません。設定の試験種別フィルターをご確認ください。');
+    return;
+  }
+  showScreen('daily-setup', '今日の演習', '問題数を選んで開始');
+}
+
+function selectDailyCount(count) {
+  dailyState.totalCount = count;
+  document.querySelectorAll('.daily-count-btn').forEach(btn => {
+    btn.classList.toggle('active', parseInt(btn.dataset.count) === count);
+  });
+}
+
+function startDailyMode() {
+  const filtered = filterByExamType(state.questions);
+  if (filtered.length === 0) {
+    alert('該当する問題がありません');
+    return;
+  }
+
+  const totalCount = dailyState.totalCount;
+
+  // 科目ごとに問題をグルーピング(AI作成問題は除外)
+  const bySubject = {};
+  filtered.forEach(q => {
+    if (isNaN(Number(q.year))) return;
+    if (!bySubject[q.subject]) bySubject[q.subject] = [];
+    bySubject[q.subject].push(q);
+  });
+
+  // 科目リストをその都度シャッフル（毎回ランダムな科目順になる）
+  const availableSubjects = shuffleArray(Object.keys(bySubject));
+
+  if (availableSubjects.length === 0) {
+    alert('該当する問題がありません');
+    return;
+  }
+
+  // 各科目から「未出題優先 + 復習日が近い順」で並べたキューを作る
+  const subjectQueues = {};
+  for (const subj of availableSubjects) {
+    const pool = bySubject[subj];
+    const untried = pool.filter(q => !state.progress[q.id]);
+    const tried = pool.filter(q => state.progress[q.id]);
+
+    // 未出題はランダム順、出題済みは復習日が近い順
+    const shuffledUntried = shuffleArray([...untried]);
+    tried.sort((a, b) => {
+      const pa = state.progress[a.id];
+      const pb = state.progress[b.id];
+      const da = pa && pa.nextReviewAt ? pa.nextReviewAt : '9999-12-31';
+      const db = pb && pb.nextReviewAt ? pb.nextReviewAt : '9999-12-31';
+      return da.localeCompare(db);
+    });
+
+    subjectQueues[subj] = [...shuffledUntried, ...tried];
+  }
+
+  // ランダムな科目順でラウンドロビン出題（毎回科目ごとの問題数が異なる）
+  const picked = [];
+  let exhausted = false;
+  while (picked.length < totalCount && !exhausted) {
+    exhausted = true;
+    for (const subj of availableSubjects) {
+      if (picked.length >= totalCount) break;
+      const q = subjectQueues[subj].shift();
+      if (q) {
+        picked.push(q);
+        exhausted = false;
+      }
+    }
+  }
+
+  if (picked.length === 0) {
+    alert('該当する問題がありません');
+    return;
+  }
+
+  // 不足警告
+  if (picked.length < totalCount) {
+    if (!confirm(`利用可能な問題が ${picked.length}問 のみです（希望: ${totalCount}問）。\n続行しますか?`)) return;
+  }
+
+  // 通常の出題モードに乗せる
+  state.questionQueue = picked;
+  state.currentIndex = 0;
+  state.currentMode = 'daily';
+  state.currentSubject = null;
+  state.skipProgressSave = false;
+  showQuestion();
+}
+
+//=========================================================
+// 本試験形式モード
+//=========================================================
+
+// 科目分類表(29回〜)に準拠した本試験の科目構成
+const EXAM_STRUCTURE = {
+  hari_kyu: {
+    label: 'はり師きゅう師',
+    totalQ: 180,
+    sections: [
+      // AM(基礎科目) - 共通プール
+      { subject: '医療概論',           section: 'AM', count: 4,  pool: 'common' },
+      { subject: '衛生学・公衆衛生学', section: 'AM', count: 6,  pool: 'common' },
+      { subject: '関係法規',           section: 'AM', count: 4,  pool: 'common' },
+      { subject: '解剖学',             section: 'AM', count: 9,  pool: 'common' },
+      { subject: '生理学',             section: 'AM', count: 9,  pool: 'common' },
+      { subject: '病理学概論',         section: 'AM', count: 6,  pool: 'common' },
+      { subject: '臨床医学総論',       section: 'AM', count: 10, pool: 'common' },
+      { subject: '臨床医学各論',       section: 'AM', count: 22, pool: 'common' },
+      { subject: 'リハビリテーション医学', section: 'AM', count: 12, pool: 'common' },
+      { subject: '総合問題(基礎科目)', section: 'AM', count: 8,  pool: 'common' },
+      // PM(専門科目) - 共通プール
+      { subject: '東洋医学概論',       section: 'PM', count: 16, pool: 'common' },
+      { subject: '経絡経穴概論',       section: 'PM', count: 20, pool: 'common' },
+      { subject: '東洋医学臨床論',     section: 'PM', count: 24, pool: 'common' },
+      { subject: '総合問題(専門科目)', section: 'PM', count: 10, pool: 'common' },
+      // 専門理論(はりきゅう専用)
+      { subject: 'はり理論',           section: 'PM', count: 10, pool: 'hari_kyu' },
+      { subject: 'きゅう理論',         section: 'PM', count: 10, pool: 'hari_kyu' }
+    ]
+  },
+  amashi: {
+    label: 'あマ指',
+    totalQ: 160,
+    sections: [
+      // AM(基礎科目) - 共通プール
+      { subject: '医療概論',           section: 'AM', count: 4,  pool: 'common' },
+      { subject: '衛生学・公衆衛生学', section: 'AM', count: 6,  pool: 'common' },
+      { subject: '関係法規',           section: 'AM', count: 4,  pool: 'common' },
+      { subject: '解剖学',             section: 'AM', count: 8,  pool: 'common' },
+      { subject: '生理学',             section: 'AM', count: 8,  pool: 'common' },
+      { subject: '病理学概論',         section: 'AM', count: 6,  pool: 'common' },
+      { subject: '臨床医学総論',       section: 'AM', count: 10, pool: 'common' },
+      { subject: '臨床医学各論',       section: 'AM', count: 16, pool: 'common' },
+      { subject: 'リハビリテーション医学', section: 'AM', count: 12, pool: 'common' },
+      { subject: '総合問題(基礎科目)', section: 'AM', count: 6,  pool: 'common' },
+      // PM(専門科目) - 共通プール
+      { subject: '東洋医学概論',       section: 'PM', count: 14, pool: 'common' },
+      { subject: '経絡経穴概論',       section: 'PM', count: 14, pool: 'common' },
+      { subject: '東洋医学臨床論',     section: 'PM', count: 30, pool: 'common' },
+      { subject: '総合問題(専門科目)', section: 'PM', count: 10, pool: 'common' },
+      // 専門理論(あマ指専用)
+      { subject: 'あマ指理論',         section: 'PM', count: 12, pool: 'amashi', altNames: ['あん摩マッサージ指圧理論'] }
+    ]
+  }
+};
+
+// 構成行の問題プールを取得
+function getQuestionsForSection(row, allQuestions, yearFilter, excludeUnsuitable) {
+  const subjectsToMatch = row.mergedSubjects ? [...row.mergedSubjects] : [row.subject];
+  if (row.altNames) subjectsToMatch.push(...row.altNames);
+
+  let pool;
+  if (row.pool === 'common') {
+    pool = allQuestions.filter(q => subjectsToMatch.includes(q.subject));
+  } else {
+    pool = allQuestions.filter(q => q.examType === row.pool && subjectsToMatch.includes(q.subject));
+  }
+
+  // 不適切問題は科目構成にそもそも含まれないため、ここでの除外は念のため
+  if (excludeUnsuitable) {
+    pool = pool.filter(q => q.subject !== '不適切問題');
+  }
+
+  if (yearFilter) {
+    pool = pool.filter(q => yearFilter(q));
+  }
+
+  return pool;
+}
+
+// 本試験形式の問題抽出(科目別に必要数を抜粋)
+function buildExamQuestions(examType, allQuestions, yearFilter, excludeMuted = false) {
+  const structure = EXAM_STRUCTURE[examType];
+  const result = {
+    questions: [],
+    sectionResults: [],
+    shortages: []
+  };
+
+  // 除外年度フィルターを適用（examType別に独立して判定）
+  let baseQuestions = allQuestions.filter(q => !isYearExcluded(q));
+
+  // 本試験は本来不適切問題を含まないので、念のため除外
+  for (const row of structure.sections) {
+    let pool = getQuestionsForSection(row, baseQuestions, yearFilter, true);
+    // 出題除外問題を除外（オプション選択時のみ）
+    if (excludeMuted) pool = pool.filter(q => !isMutedQuestion(q));
+    const needed = row.count;
+    const available = pool.length;
+    const taken = Math.min(needed, available);
+
+    let picked = [];
+    if (taken > 0) {
+      picked = shuffleArray([...pool]).slice(0, taken);
+    }
+
+    result.questions.push(...picked);
+    result.sectionResults.push({
+      subject: row.subject,
+      section: row.section,
+      needed,
+      taken,
+      available
+    });
+
+    if (taken < needed) {
+      result.shortages.push({
+        subject: row.subject,
+        section: row.section,
+        needed,
+        available
+      });
+    }
+  }
+
+  return result;
+}
+
+const examState = {
+  questions: [],
+  answers: {},
+  bookmarks: {},
+  currentIndex: 0,
+  currentSection: 'AM',
+  startTime: null,
+  endTime: null,
+  amTimeLimit: 130 * 60,
+  pmTimeLimit: 130 * 60,
+  amStartTime: null,
+  pmStartTime: null,
+  timerInterval: null,
+  examType: 'hari_kyu',
+  isRunning: false,
+  recordHistory: false,
+  examMethod: 'paper',
+  shuffleChoices: false,
+  // 問題ごとの選択肢順序とその場合の正答番号(画面表示用)
+  choiceOrders: {},  // {questionIndex: [origIdx順序], correctMapped: 表示上の正答番号}
+};
+
+function goExamSetup() {
+  // 取り込み済み年度を取得（yearが数値のもののみ）
+  const yearSet = new Set();
+  state.questions.forEach(q => {
+    if (!isNaN(Number(q.year))) yearSet.add(`${q.examType}_${q.year}`);
+  });
+  const years = Array.from(yearSet).sort();
+
+  const select = document.getElementById('exam-year-select');
+  select.innerHTML = '<option value="">取り込み済みの年度から選択...</option>';
+  years.forEach(key => {
+    const [type, year] = key.split('_').slice(-2);
+    // hari_kyu_34 -> ['hari', 'kyu', '34']の場合があるので最後の2要素
+    const parts = key.split('_');
+    const yr = parts[parts.length - 1];
+    const tp = parts.slice(0, -1).join('_');
+    const typeLabel = tp === 'hari_kyu' ? 'はりきゅう' : 'あマ指';
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = `${typeLabel} 第${yr}回`;
+    select.appendChild(opt);
+  });
+
+  if (years.length === 0) {
+    select.innerHTML = '<option value="">問題データがありません</option>';
+  }
+
+  // AI作成問題（yearが数値以外）のドロップダウンを構築
+  const originalYearSet = new Set();
+  state.questions.forEach(q => {
+    if (isNaN(Number(q.year))) originalYearSet.add(q.year);
+  });
+  const originalYears = Array.from(originalYearSet).sort();
+
+  const origSelect = document.getElementById('exam-original-select');
+  if (originalYears.length === 0) {
+    origSelect.innerHTML = '<option value="">追加データがありません</option>';
+  } else {
+    origSelect.innerHTML = '<option value="">すべての追加分</option>';
+    originalYears.forEach(yr => {
+      const opt = document.createElement('option');
+      opt.value = yr;
+      opt.textContent = yr;
+      origSelect.appendChild(opt);
+    });
+  }
+
+  updateExamSourceUI();
+  showScreen('exam-setup', '本試験形式モード', '実施条件を選択');
+}
+
+function updateExamSourceUI() {
+  const source = document.querySelector('input[name="exam-source"]:checked').value;
+
+  const yearWrap = document.getElementById('year-select-wrap');
+  const yearSel = document.getElementById('exam-year-select');
+  yearWrap.style.display = source === 'year' ? 'block' : 'none';
+  yearSel.disabled = source !== 'year';
+
+  const origWrap = document.getElementById('original-select-wrap');
+  const origSel = document.getElementById('exam-original-select');
+  origWrap.style.display = source === 'original' ? 'block' : 'none';
+  origSel.disabled = source !== 'original';
+
+  // AI作成問題を選んだ場合は「学習履歴に反映」を強制OFF・操作不可にする
+  const recordCb = document.getElementById('exam-record-history');
+  const recordDesc = document.getElementById('exam-record-history-desc');
+  if (recordCb) {
+    if (source === 'original') {
+      recordCb.checked = false;
+      recordCb.disabled = true;
+      if (recordDesc) recordDesc.textContent = 'AI作成問題は学習履歴・忘却曲線に反映されません(本試験形式モード専用)。';
+    } else {
+      recordCb.disabled = false;
+      if (recordDesc) recordDesc.textContent = '画面実施時のみ自動反映。紙で実施した場合は試験後に画面で結果入力が必要です。';
+    }
+  }
+}
+
+function startExamMode() {
+  const examType = document.querySelector('input[name="exam-type"]:checked').value;
+  const source = document.querySelector('input[name="exam-source"]:checked').value;
+  const method = document.querySelector('input[name="exam-method"]:checked').value;
+  let recordHistory = document.getElementById('exam-record-history').checked;
+  const shuffleChoices = document.getElementById('exam-shuffle-choices').checked;
+  const excludeMuted = document.getElementById('exam-exclude-muted').checked;
+
+  // AI作成問題の場合は、チェックの有無に関わらず学習履歴に反映しない
+  if (source === 'original') {
+    recordHistory = false;
+  }
+
+  // 年度フィルタ
+  let yearFilter = null;
+  let yearLabel = 'ランダム模試';
+  if (source === 'year') {
+    const yearKey = document.getElementById('exam-year-select').value;
+    if (!yearKey) {
+      alert('年度を選択してください');
+      return;
+    }
+    const parts = yearKey.split('_');
+    const yr = parseInt(parts[parts.length - 1]);
+    yearFilter = (q) => q.year === yr;
+    yearLabel = `第${yr}回`;
+  } else if (source === 'original') {
+    const origKey = document.getElementById('exam-original-select').value;
+    if (origKey) {
+      // 特定の追加分を選択
+      yearFilter = (q) => isNaN(Number(q.year)) && q.year === origKey;
+      yearLabel = origKey;
+    } else {
+      // すべての追加分
+      yearFilter = (q) => isNaN(Number(q.year));
+      yearLabel = 'AI作成問題(全)';
+    }
+  } else {
+    // 全範囲からランダム出題：year が数値の問題のみ（AI作成問題は除外）
+    yearFilter = (q) => !isNaN(Number(q.year));
+    yearLabel = 'ランダム模試';
+  }
+
+  // 科目構成に従って問題抽出
+  const buildResult = buildExamQuestions(examType, state.questions, yearFilter, excludeMuted);
+
+  if (buildResult.questions.length === 0) {
+    alert('該当する問題が一切ありません。問題データを取り込んでください。');
+    return;
+  }
+
+  // 不足科目の警告
+  if (buildResult.shortages.length > 0) {
+    const shortageMsg = buildResult.shortages.map(s =>
+      `・${s.subject}(${s.section}): ${s.available}/${s.needed}問`
+    ).join('\n');
+    const totalNeeded = EXAM_STRUCTURE[examType].totalQ;
+    const actualCount = buildResult.questions.length;
+    const msg = `以下の科目で問題数が不足しています:\n\n${shortageMsg}\n\n本来${totalNeeded}問の試験を、${actualCount}問で実施します。\n\n続行しますか?`;
+    if (!confirm(msg)) return;
+  }
+
+  let questions = buildResult.questions;
+
+  // 問題のソート(年度指定時は問題番号順、それ以外はAM→PM順)
+  if (source === 'year') {
+    questions.sort((a, b) => {
+      if (a.section !== b.section) return a.section === 'AM' ? -1 : 1;
+      return a.questionNo - b.questionNo;
+    });
+  } else {
+    questions.sort((a, b) => {
+      if (a.section !== b.section) return a.section === 'AM' ? -1 : 1;
+      return 0;
+    });
+  }
+
+  // 選択肢順序とマッピング先正答番号を準備
+  const choiceOrders = {};
+  questions.forEach((q, idx) => {
+    let order = [0, 1, 2, 3];
+    if (shuffleChoices) order = shuffleArray([...order]);
+    // 元の正答番号(1始まり)を新しい表示順序での番号に変換
+    const mappedCorrect = q.correctAnswers.map(origNum => order.indexOf(origNum - 1) + 1);
+    choiceOrders[idx] = { order, mappedCorrect };
+  });
+
+  // 状態初期化
+  examState.questions = questions;
+  examState.choiceOrders = choiceOrders;
+  examState.answers = {};
+  examState.bookmarks = {};
+  examState.choiceNotes = {}; // 本試験中の選択肢メモ {questionIndex: {origIdx: 'sei'|'go'|'hate'}}
+  examState.currentIndex = 0;
+  examState.examType = examType;
+  examState.recordHistory = recordHistory;
+  examState.examMethod = method;
+  examState.shuffleChoices = shuffleChoices;
+  examState.startTime = new Date();
+  examState.amStartTime = new Date();
+  examState.pmStartTime = null;
+  examState.currentSection = questions[0].section;
+  examState.isRunning = true;
+  examState.yearLabel = yearLabel;
+
+  if (method === 'paper') {
+    examState.isRunning = false; // PDFモードはタイマー不要
+    generateExamPaper(questions, examType, source, yearLabel, shuffleChoices, choiceOrders);
+    return;
+  }
+
+  // 画面実施開始
+  showExamQuestion();
+  startExamTimer();
+}
+
+function startExamTimer() {
+  if (examState.timerInterval) clearInterval(examState.timerInterval);
+  examState.timerInterval = setInterval(updateExamTimer, 1000);
+  updateExamTimer();
+}
+
+function updateExamTimer() {
+  if (!examState.isRunning) return;
+
+  const now = new Date();
+  let elapsed, limit;
+  if (examState.currentSection === 'AM') {
+    elapsed = Math.floor((now - examState.amStartTime) / 1000);
+    limit = examState.amTimeLimit;
+  } else {
+    if (!examState.pmStartTime) examState.pmStartTime = now;
+    elapsed = Math.floor((now - examState.pmStartTime) / 1000);
+    limit = examState.pmTimeLimit;
+  }
+
+  const remain = Math.max(0, limit - elapsed);
+  const h = Math.floor(remain / 3600);
+  const m = Math.floor((remain % 3600) / 60);
+  const s = remain % 60;
+  const text = `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  const timer = document.getElementById('exam-timer');
+  if (timer) {
+    timer.textContent = text;
+    timer.classList.toggle('warning', remain < 600 && remain >= 60);
+    timer.classList.toggle('critical', remain < 60);
+  }
+
+  if (remain === 0) {
+    // 時間切れ
+    if (examState.currentSection === 'AM') {
+      // PM開始の確認
+      const hasPM = examState.questions.some(q => q.section === 'PM');
+      if (hasPM) {
+        showToast('AM時間切れ。PMに移行します');
+        // 次のPM問題に飛ばす
+        const pmIdx = examState.questions.findIndex(q => q.section === 'PM');
+        if (pmIdx >= 0) {
+          examState.currentIndex = pmIdx;
+          examState.currentSection = 'PM';
+          examState.pmStartTime = new Date();
+          showExamQuestion();
+        }
+      } else {
+        finishExam();
+      }
+    } else {
+      finishExam();
+    }
+  }
+}
+
+function showExamQuestion() {
+  const q = examState.questions[examState.currentIndex];
+  if (!q) return;
+
+  // セクション切替判定
+  if (q.section !== examState.currentSection) {
+    if (examState.currentSection === 'AM' && q.section === 'PM') {
+      examState.pmStartTime = new Date();
+    }
+    examState.currentSection = q.section;
+  }
+
+  // セクション内の番号
+  const sectionQs = examState.questions.filter(qq => qq.section === q.section);
+  const sectionIdx = sectionQs.findIndex(qq => qq === q) + 1;
+
+  document.getElementById('exam-section-label').textContent = q.section;
+  document.getElementById('exam-progress-text').textContent = `問${sectionIdx} / ${sectionQs.length}`;
+
+  const examTypeBadge = document.getElementById('exam-q-type');
+  if (q.examType === 'amashi') {
+    examTypeBadge.textContent = 'あマ指';
+    examTypeBadge.classList.add('amashi');
+  } else {
+    examTypeBadge.textContent = 'はりきゅう';
+    examTypeBadge.classList.remove('amashi');
+  }
+
+  document.getElementById('exam-q-subject').textContent = q.subject;
+  // 試験種別+年度+問題番号を年度バッジに表示
+  const sourceTypeLabel = q.examType === 'amashi' ? 'あマ指' : 'はりきゅう';
+  document.getElementById('exam-q-year').textContent = `${sourceTypeLabel}・${formatYearLabel(q.year)} 問${q.questionNo}`;
+  document.getElementById('exam-q-no').textContent = `${examState.currentIndex + 1}/${examState.questions.length}`;
+  document.getElementById('exam-q-text').textContent = q.questionText;
+
+  const choicesDiv = document.getElementById('exam-q-choices');
+  choicesDiv.innerHTML = '';
+  const userAnswer = examState.answers[examState.currentIndex];
+  const orderInfo = examState.choiceOrders[examState.currentIndex];
+  const order = orderInfo ? orderInfo.order : [0, 1, 2, 3];
+  if (!examState.choiceNotes[examState.currentIndex]) examState.choiceNotes[examState.currentIndex] = {};
+  const examNoteTypes = [
+    { key: 'sei',  label: '正', cls: 'active-sei'  },
+    { key: 'go',   label: '誤', cls: 'active-go'   },
+    { key: 'hate', label: '?',  cls: 'active-hate' }
+  ];
+  order.forEach((origIdx, displayPos) => {
+    const num = displayPos + 1; // 表示上の番号
+    const div = document.createElement('div');
+    div.className = 'choice' + (userAnswer === num ? ' selected' : '');
+    div.dataset.origIdx = origIdx + 1; // 元の選択肢番号(1始まり)
+    div.innerHTML = `<span class="num">${num}.</span><span style="flex:1;">${escapeHtml(q.choices[origIdx])}</span>`;
+    div.onclick = () => examSelectChoice(num);
+    // 選択肢メモボタン
+    const noteWrap = document.createElement('div');
+    noteWrap.className = 'choice-note-wrap';
+    noteWrap.addEventListener('click', e => e.stopPropagation());
+    const noteIdx = examState.currentIndex;
+    examNoteTypes.forEach(nt => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-note-btn';
+      btn.textContent = nt.label;
+      btn.dataset.noteKey = nt.key;
+      const cur = (examState.choiceNotes[noteIdx] || {})[origIdx + 1];
+      if (cur === nt.key) btn.classList.add(nt.cls);
+      btn.onclick = () => {
+        if (!examState.choiceNotes[noteIdx]) examState.choiceNotes[noteIdx] = {};
+        const notes = examState.choiceNotes[noteIdx];
+        if (notes[origIdx + 1] === nt.key) {
+          delete notes[origIdx + 1];
+        } else {
+          notes[origIdx + 1] = nt.key;
+        }
+        noteWrap.querySelectorAll('.choice-note-btn').forEach(b => {
+          examNoteTypes.forEach(t => b.classList.remove(t.cls));
+          const active = (examState.choiceNotes[noteIdx] || {})[origIdx + 1];
+          if (active) {
+            const matched = examNoteTypes.find(t => t.key === active);
+            if (matched && b.dataset.noteKey === active) b.classList.add(matched.cls);
+          }
+        });
+      };
+      noteWrap.appendChild(btn);
+    });
+    div.appendChild(noteWrap);
+    choicesDiv.appendChild(div);
+  });
+
+  document.getElementById('exam-bookmark').checked = !!examState.bookmarks[examState.currentIndex];
+  document.getElementById('exam-prev-btn').disabled = examState.currentIndex === 0;
+  const isLast = examState.currentIndex === examState.questions.length - 1;
+  document.getElementById('exam-next-btn').textContent = isLast ? '試験終了 →' : '次へ →';
+
+  showScreen('exam-running', '本試験形式モード', `${examState.examType === 'hari_kyu' ? 'はりきゅう' : 'あマ指'}`);
+}
+
+function examSelectChoice(num) {
+  examState.answers[examState.currentIndex] = num;
+  document.querySelectorAll('#exam-q-choices .choice').forEach((el, i) => {
+    el.classList.toggle('selected', i + 1 === num);
+  });
+}
+
+document.addEventListener('change', (e) => {
+  if (e.target.id === 'exam-bookmark') {
+    if (e.target.checked) {
+      examState.bookmarks[examState.currentIndex] = true;
+    } else {
+      delete examState.bookmarks[examState.currentIndex];
+    }
+  }
+});
+
+function examPrevQuestion() {
+  if (examState.currentIndex > 0) {
+    examState.currentIndex--;
+    showExamQuestion();
+  }
+}
+
+function examNextQuestion() {
+  if (examState.currentIndex < examState.questions.length - 1) {
+    examState.currentIndex++;
+    showExamQuestion();
+  } else {
+    confirmFinishExam();
+  }
+}
+
+function goExamOverview() {
+  const grid = document.getElementById('exam-overview-grid');
+  grid.innerHTML = '';
+  examState.questions.forEach((q, idx) => {
+    const cell = document.createElement('div');
+    cell.className = 'exam-overview-cell';
+    if (examState.answers[idx] !== undefined) cell.classList.add('answered');
+    if (examState.bookmarks[idx]) cell.classList.add('bookmarked');
+    if (idx === examState.currentIndex) cell.classList.add('current');
+    cell.textContent = idx + 1;
+    cell.onclick = () => {
+      examState.currentIndex = idx;
+      showExamQuestion();
+    };
+    grid.appendChild(cell);
+  });
+
+  showScreen('exam-overview', '問題一覧', '解答済み・未解答を確認');
+}
+
+function goBackToExam() {
+  showExamQuestion();
+}
+
+function confirmFinishExam() {
+  const unanswered = examState.questions.length - Object.keys(examState.answers).length;
+  let msg = '試験を終了して採点しますか?';
+  if (unanswered > 0) {
+    msg = `未解答が${unanswered}問あります。終了して採点しますか?`;
+  }
+  showModal('試験終了の確認', msg, finishExam);
+}
+
+async function finishExam() {
+  examState.isRunning = false;
+  examState.endTime = new Date();
+  if (examState.timerInterval) {
+    clearInterval(examState.timerInterval);
+    examState.timerInterval = null;
+  }
+  closeModal();
+
+  // 採点
+  let correctCount = 0;
+  const subjectStats = {};
+  examState.questions.forEach((q, idx) => {
+    const userAns = examState.answers[idx];
+    const orderInfo = examState.choiceOrders[idx];
+    const correctSet = orderInfo ? orderInfo.mappedCorrect : q.correctAnswers;
+    const isCorrect = userAns !== undefined && correctSet.includes(userAns);
+    if (isCorrect) correctCount++;
+    if (!subjectStats[q.subject]) subjectStats[q.subject] = { correct: 0, total: 0 };
+    subjectStats[q.subject].total++;
+    if (isCorrect) subjectStats[q.subject].correct++;
+
+    // 学習履歴に反映(元の問題IDで保存)
+    if (examState.recordHistory) {
+      saveProgress(q.id, isCorrect);
+    }
+  });
+
+  const total = examState.questions.length;
+  const percentage = Math.round((correctCount / total) * 100);
+  const passThreshold = Math.floor(total * 0.6); // 60%が合格ライン
+  const isPassed = correctCount >= passThreshold;
+
+  document.getElementById('result-score').textContent = `${correctCount} / ${total}`;
+  document.getElementById('result-percentage').textContent = `${percentage}%`;
+  const judgment = document.getElementById('result-judgment');
+  if (isPassed) {
+    judgment.textContent = '✓ 合格ライン到達';
+    judgment.style.color = '#4caf50';
+  } else {
+    judgment.textContent = `あと${passThreshold - correctCount}問で合格ライン`;
+    judgment.style.color = '#ffd54f';
+  }
+
+  // 科目別
+  const SUBJECT_ORDER = ['医療概論', '衛生学・公衆衛生学', '関係法規', '解剖学', '生理学', '病理学概論', '臨床医学総論', '臨床医学各論', 'リハビリテーション医学', '総合問題(基礎科目)', '東洋医学概論', '経絡経穴概論', '東洋医学臨床論', '総合問題(専門科目)', 'はり理論', 'きゅう理論', 'あマ指理論', 'あん摩マッサージ指圧理論'];
+  const list = document.getElementById('result-subject-list');
+  list.innerHTML = '';
+  const sorted = Object.entries(subjectStats).sort((a, b) => {
+    const ai = SUBJECT_ORDER.indexOf(a[0]);
+    const bi = SUBJECT_ORDER.indexOf(b[0]);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    return 0;
+  });
+  sorted.forEach(([name, stat]) => {
+    const pct = Math.round((stat.correct / stat.total) * 100);
+    const div = document.createElement('div');
+    div.className = 'subject-result-row';
+    div.innerHTML = `
+      <span style="flex: 1; min-width: 120px;">${escapeHtml(name)}</span>
+      <span style="font-size: 12px; color: #7a8a99;">${stat.correct}/${stat.total}</span>
+      <div class="subject-result-bar"><div class="subject-result-bar-fill" style="width: ${pct}%;"></div></div>
+      <span style="font-weight: 600; min-width: 36px; text-align: right;">${pct}%</span>
+    `;
+    list.appendChild(div);
+  });
+
+  // 所要時間
+  const elapsed = Math.floor((examState.endTime - examState.startTime) / 1000);
+  const eh = Math.floor(elapsed / 3600);
+  const em = Math.floor((elapsed % 3600) / 60);
+  const es = elapsed % 60;
+  document.getElementById('result-time').textContent = `${eh}時間 ${em}分 ${es}秒`;
+
+  showScreen('exam-result', '試験結果', `${examState.examType === 'hari_kyu' ? 'はりきゅう' : 'あマ指'}`);
+}
+
+async function generateExamPaper(questions, examType, source, yearLabel, shuffleChoices, choiceOrders, skipSave, createdAt) {
+  const typeLabel = examType === 'hari_kyu' ? 'はり師きゅう師' : 'あマ指';
+  const titleSuffix = yearLabel || (source === 'year' ? '年度模試' : 'ランダム模試');
+
+  // セッションをDBに保存(後から結果入力できるように)
+  const sessionId = `paper_${Date.now()}`;
+  const recordHistory = examState.recordHistory;
+  // ローカル時刻のISO形式 (例: 2026-05-18T07:31:00) で保存
+  // toISOString()はUTCを返すため、そのまま slice すると日本時刻と9時間ずれる
+  const _now = new Date();
+  const _pad = n => String(n).padStart(2, '0');
+  const _createdAt = `${_now.getFullYear()}-${_pad(_now.getMonth()+1)}-${_pad(_now.getDate())}T${_pad(_now.getHours())}:${_pad(_now.getMinutes())}:${_pad(_now.getSeconds())}`;
+  const session = {
+    id: sessionId,
+    createdAt: _createdAt,
+    examType,
+    typeLabel,
+    titleSuffix,
+    recordHistory,
+    shuffleChoices,
+    // 出題順そのまま、各問題のIDと選択肢順序を保存
+    items: questions.map((q, idx) => ({
+      questionId: q.id,
+      examType: q.examType,
+      year: q.year,
+      questionNo: q.questionNo,
+      subject: q.subject,
+      section: q.section,
+      choiceOrder: choiceOrders[idx] ? choiceOrders[idx].order : [0, 1, 2, 3],
+      mappedCorrect: choiceOrders[idx] ? choiceOrders[idx].mappedCorrect : q.correctAnswers
+    })),
+    results: {} // {index: 'correct' | 'incorrect'}
+  };
+
+  try {
+    if (!skipSave) await dbPut('paperSessions', session);
+  } catch (e) {
+    console.error('セッション保存失敗:', e);
+  }
+
+  // 問題セクションごとに整理
+  const amQs = questions.filter(q => q.section === 'AM');
+  const pmQs = questions.filter(q => q.section === 'PM');
+
+  // 印刷用HTML組み立て
+  const _d = createdAt ? new Date(createdAt) : new Date();
+  const dateStr = `${_d.getFullYear()}年${_d.getMonth() + 1}月${_d.getDate()}日 ${String(_d.getHours()).padStart(2,'0')}:${String(_d.getMinutes()).padStart(2,'0')}`;
+
+  function renderQuestionRow(q, num, globalIdx) {
+    const orderInfo = choiceOrders[globalIdx];
+    const order = orderInfo ? orderInfo.order : [0, 1, 2, 3];
+    const choicesHtml = order.map((origIdx, displayPos) =>
+      `<div>${displayPos + 1}.${escapeHtml(q.choices[origIdx])}</div>`
+    ).join('');
+    const sourceTypeLabel = q.examType === 'amashi' ? 'あマ指' : 'はりきゅう';
+    return `
+      <div class="qbox">
+        <div class="qhead">問${num} <span class="qmeta">[${escapeHtml(q.subject)}] (${sourceTypeLabel}・${formatYearLabel(q.year)} 問${q.questionNo})</span></div>
+        <div class="qtext">${escapeHtml(q.questionText)}</div>
+        <div class="qchoices">${choicesHtml}</div>
+      </div>
+    `;
+  }
+
+  function renderSection(label, qs, startNum, globalStartIdx) {
+    if (qs.length === 0) return '';
+    let boxes = '';
+    qs.forEach((q, idx) => {
+      boxes += renderQuestionRow(q, startNum + idx, globalStartIdx + idx);
+    });
+    return `
+      <div class="section-head">${label}(${qs.length}問)</div>
+      <div class="qcolumns">${boxes}</div>
+    `;
+  }
+
+  // 正答一覧(選択肢順序を考慮した表示上の正答番号)
+  function renderAnswerKey(qs, globalStartIdx, displayStartNum) {
+    let cells = '';
+    const startNum = (typeof displayStartNum === 'number') ? displayStartNum : 1;
+    qs.forEach((q, idx) => {
+      const orderInfo = choiceOrders[globalStartIdx + idx];
+      const correctNums = orderInfo ? orderInfo.mappedCorrect : q.correctAnswers;
+      cells += `<div class="akey-cell"><span class="qn">問${startNum + idx}</span><b>${correctNums.join('・')}</b></div>`;
+    });
+    return cells;
+  }
+
+  // 注意書き
+  const shuffleNote = shuffleChoices
+    ? '<br>・<strong>選択肢の順序はランダム化</strong>されています。元の問題と異なる順序で表示されます。'
+    : '';
+
+  const html = `
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>${typeLabel} ${titleSuffix} 模擬試験</title>
+<style>
+  @page { size: A4; margin: 12mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif; color: #000; font-size: 10.5pt; line-height: 1.55; margin: 0; padding: 0; }
+  .cover { text-align: center; padding: 4mm 0 2mm; border-bottom: 2px solid #000; margin-bottom: 6mm; }
+  .cover h1 { font-size: 18pt; margin: 0 0 3mm; }
+  .cover .subtitle { font-size: 12pt; margin: 1mm 0; }
+  .cover .info { font-size: 10pt; color: #444; margin-top: 3mm; }
+  .notice { font-size: 9pt; border: 1px solid #888; padding: 3mm 5mm; margin-bottom: 5mm; background: #f8f8f8; }
+  .notice strong { display: block; margin-bottom: 1.5mm; }
+  .section-head { font-size: 13pt; font-weight: bold; background: #2c5f7c; color: white; padding: 2mm 4mm; margin-top: 8mm; margin-bottom: 3mm; page-break-after: avoid; }
+  .qcolumns { column-count: 2; column-gap: 5mm; column-rule: 0.5pt solid #ddd; }
+  .qbox { break-inside: avoid; padding: 2mm 0 3mm; border-bottom: 0.5pt solid #ccc; margin-bottom: 2mm; }
+  .qhead { font-weight: bold; font-size: 9.5pt; background: #e8eef3; padding: 1mm 2mm; margin-bottom: 1.5mm; }
+  .qmeta { font-weight: normal; color: #555; font-size: 7.5pt; }
+  .qtext { margin-bottom: 1.5mm; font-size: 9.5pt; line-height: 1.5; }
+  .qchoices { padding-left: 4mm; font-size: 9pt; line-height: 1.5; }
+  .qchoices > div { margin-bottom: 0.5mm; }
+  .answer-key { margin-top: 6mm; padding-top: 4mm; border-top: 2px solid #000; page-break-before: always; }
+  .answer-key h2 { font-size: 12pt; text-align: center; margin: 0 0 3mm; }
+  .answer-key .akey-grid { display: grid; grid-template-columns: repeat(10, 1fr); gap: 0.5mm; font-size: 8pt; }
+  .akey-cell { border: 0.5pt solid #aaa; padding: 0.8mm 0.5mm; text-align: center; line-height: 1.3; }
+  .akey-cell .qn { font-size: 7pt; color: #555; }
+  .akey-cell b { font-size: 10pt; display: block; }
+  .answer-key .akey-section { margin-bottom: 3mm; }
+  .answer-key .akey-section h3 { font-size: 10pt; margin: 2mm 0 1.5mm; }
+  @media print {
+    body { margin: 0; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>${typeLabel} 国家試験 模擬試験</h1>
+  <div class="subtitle">${titleSuffix}</div>
+  <div class="info">作成日: ${dateStr} / 全 ${questions.length} 問</div>
+</div>
+
+<div class="notice">
+  <strong>注意事項</strong>
+  ・各問題には1〜4の四つの選択肢があります。質問に最も適した答えを一つ選んでください。<br>
+  ・午前(AM)・午後(PM)それぞれ制限時間は2時間10分です。<br>
+  ・解答は別紙またはお手元の解答用紙に記入してください。${shuffleNote}
+</div>
+
+${renderSection('午前(AM)', amQs, 1, 0)}
+${renderSection('午後(PM)', pmQs, amQs.length + 1, amQs.length)}
+
+<div class="answer-key">
+  <h2>━ 正答一覧 ━</h2>
+  ${amQs.length > 0 ? `
+    <div class="akey-section">
+      <h3>午前(AM)</h3>
+      <div class="akey-grid">${renderAnswerKey(amQs, 0, 1)}</div>
+    </div>` : ''}
+  ${pmQs.length > 0 ? `
+    <div class="akey-section">
+      <h3>午後(PM)</h3>
+      <div class="akey-grid">${renderAnswerKey(pmQs, amQs.length, amQs.length + 1)}</div>
+    </div>` : ''}
+</div>
+
+</body>
+</html>
+  `;
+
+  showPaperOverlay(html, questions.length, !!skipSave);
+}
+
+// 問題用紙オーバーレイを表示（新規出力・再印刷で共通利用）
+function showPaperOverlay(html, count, fromReprint) {
+  // 既存のオーバーレイがあれば除去
+  const existing = document.getElementById('print-overlay');
+  if (existing) document.body.removeChild(existing);
+
+  const overlay = document.createElement('div');
+  overlay.id = 'print-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:white;z-index:9999;display:flex;flex-direction:column;';
+
+  const toolbar = document.createElement('div');
+  toolbar.style.cssText = 'display:flex;align-items:center;gap:12px;padding:10px 16px;background:#2c5f7c;color:white;flex-shrink:0;';
+  // 再印刷時は閉じても結果入力画面に留まる（ホームへ戻さない）
+  const closeAction = fromReprint
+    ? "document.body.removeChild(document.getElementById('print-overlay'));"
+    : "document.body.removeChild(document.getElementById('print-overlay'));goHome();showToast('印刷後、ホームから結果入力できます',3000);";
+  toolbar.innerHTML = `
+    <span style="font-size:15px;font-weight:600;flex:1;">📄 問題用紙プレビュー（${count}問）</span>
+    <button onclick="document.getElementById('print-frame').contentWindow.print()" style="padding:8px 16px;background:white;color:#2c5f7c;border:none;border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;">🖨️ 印刷</button>
+    <button onclick="${closeAction}" style="padding:8px 16px;background:rgba(255,255,255,0.2);color:white;border:none;border-radius:8px;font-size:14px;cursor:pointer;">✕ 閉じる</button>
+  `;
+
+  const iframe = document.createElement('iframe');
+  iframe.id = 'print-frame';
+  iframe.style.cssText = 'flex:1;border:none;width:100%;';
+
+  overlay.appendChild(toolbar);
+  overlay.appendChild(iframe);
+  document.body.appendChild(overlay);
+
+  iframe.contentDocument.open();
+  iframe.contentDocument.write(html);
+  iframe.contentDocument.close();
+
+  showToast(`${count}問の問題用紙を表示しました`);
+}
+
+// 保存済みセッションから問題用紙を再構成して再印刷
+async function reprintPaperFromSession() {
+  const session = paperState.session;
+  if (!session) { alert('セッションが見つかりません'); return; }
+  try {
+    // 問題本体の参照元：state.questions（ネット取得済み）
+    const pool = (state.questions && state.questions.length) ? state.questions : [];
+    const byId = {};
+    pool.forEach(q => { byId[q.id] = q; });
+    // セッションの items から、問題本体を ID で引き当てて復元
+    const questions = [];
+    const choiceOrders = {};
+    let missing = 0;
+    session.items.forEach((it, idx) => {
+      const q = byId[it.questionId];
+      if (!q) { missing++; return; }
+      questions.push(q);
+      choiceOrders[questions.length - 1] = {
+        order: it.choiceOrder || [0, 1, 2, 3],
+        mappedCorrect: it.mappedCorrect || q.correctAnswers
+      };
+    });
+    if (questions.length === 0) {
+      alert('問題データを復元できませんでした（問題データが更新された可能性があります）');
+      return;
+    }
+    if (missing > 0) {
+      showToast(`${missing}問は復元できませんでした`, 3000);
+    }
+    // skipSave=true で新しいセッションを作らずに再表示
+    await generateExamPaper(
+      questions, session.examType, 'reprint', session.titleSuffix,
+      !!session.shuffleChoices, choiceOrders, true, session.createdAt
+    );
+  } catch (e) {
+    console.error('再印刷失敗:', e);
+    alert('再印刷に失敗しました: ' + e.message);
+  }
+}
+
+//=========================================================
+// 紙試験結果入力モード
+//=========================================================
+// [B] アプリ属性定数 (内部管理用)
+const paperState = {
+  session: null
+};
+
+async function openPaperInput(sessionId) {
+  let session;
+  try {
+    session = await dbGet('paperSessions', sessionId);
+  } catch (e) {
+    alert('セッションが見つかりません');
+    return;
+  }
+  if (!session) {
+    alert('セッションが見つかりません');
+    return;
+  }
+  paperState.session = session;
+
+  // メタ情報
+  const date = session.createdAt.slice(0, 10).replace(/-/g, '/');
+  const time = session.createdAt.slice(11, 16);
+  document.getElementById('paper-input-meta').innerHTML = `
+    <div><strong>${escapeHtml(session.typeLabel)} ${escapeHtml(session.titleSuffix)}</strong></div>
+    <div>作成日: ${date} ${time} / 全${session.items.length}問</div>
+    <div style="margin-top:6px;font-size:12px;">${session.recordHistory ? '✓ 採点後、学習履歴に反映されます' : '※ 学習履歴には反映されません(設定で変更可)'}</div>
+  `;
+
+  renderPaperInput();
+  showScreen('paper-input', '紙試験 結果入力', '○×をタップ');
+}
+
+function renderPaperInput() {
+  const session = paperState.session;
+  if (!session) return;
+
+  // セクションごとに分けて表示
+  const amItems = session.items.map((it, idx) => ({ ...it, idx })).filter(it => it.section === 'AM');
+  const pmItems = session.items.map((it, idx) => ({ ...it, idx })).filter(it => it.section === 'PM');
+  const otherItems = session.items.map((it, idx) => ({ ...it, idx })).filter(it => it.section !== 'AM' && it.section !== 'PM');
+
+  const grid = document.getElementById('paper-input-grid');
+  grid.innerHTML = '';
+
+  function renderSection(label, items) {
+    if (items.length === 0) return;
+    const head = document.createElement('div');
+    head.className = 'paper-section-head';
+    head.textContent = label;
+    grid.appendChild(head);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'paper-grid';
+
+    items.forEach(item => {
+      const cell = document.createElement('div');
+      cell.className = 'paper-cell';
+      const result = session.results[item.idx];
+      cell.innerHTML = `
+        <span class="qno">問${item.idx + 1}</span>
+        <div class="marks">
+          <button class="mark-btn correct ${result === 'correct' ? 'selected' : ''}" data-idx="${item.idx}" data-mark="correct">○</button>
+          <button class="mark-btn incorrect ${result === 'incorrect' ? 'selected' : ''}" data-idx="${item.idx}" data-mark="incorrect">×</button>
+        </div>
+      `;
+      cell.querySelectorAll('.mark-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const idx = parseInt(btn.dataset.idx);
+          const mark = btn.dataset.mark;
+          paperToggleMark(idx, mark);
+        });
+      });
+      wrap.appendChild(cell);
+    });
+    grid.appendChild(wrap);
+  }
+
+  renderSection('━ AM(午前)', amItems);
+  renderSection('━ PM(午後)', pmItems);
+  if (otherItems.length > 0) renderSection('━ その他', otherItems);
+
+  updatePaperInputSummary();
+}
+
+async function paperToggleMark(idx, mark) {
+  const session = paperState.session;
+  if (!session) return;
+  const cur = session.results[idx];
+  if (cur === mark) {
+    delete session.results[idx];
+  } else {
+    session.results[idx] = mark;
+  }
+
+  // 該当セルのボタン状態を更新(再描画は重いので局所更新)
+  const cellBtns = document.querySelectorAll(`.mark-btn[data-idx="${idx}"]`);
+  cellBtns.forEach(btn => {
+    const isSelected = session.results[idx] === btn.dataset.mark;
+    btn.classList.toggle('selected', isSelected);
+  });
+
+  // DBに保存(都度)
+  try {
+    await dbPut('paperSessions', session);
+  } catch (e) {
+    console.error('保存失敗:', e);
+  }
+
+  updatePaperInputSummary();
+}
+
+function updatePaperInputSummary() {
+  const session = paperState.session;
+  if (!session) return;
+  const total = session.items.length;
+  const correct = Object.values(session.results).filter(v => v === 'correct').length;
+  const incorrect = Object.values(session.results).filter(v => v === 'incorrect').length;
+  const remaining = total - correct - incorrect;
+  document.getElementById('paper-input-summary').innerHTML = `
+    入力済: <strong>${correct + incorrect}/${total}</strong>問
+    &nbsp;|&nbsp; 〇 <strong style="color:#4caf50;">${correct}</strong>
+    &nbsp;|&nbsp; × <strong style="color:#f44336;">${incorrect}</strong>
+    &nbsp;|&nbsp; 未入力 <strong>${remaining}</strong>
+  `;
+}
+
+async function paperMarkAll(isCorrect) {
+  const session = paperState.session;
+  if (!session) return;
+  if (!confirm(`全ての問題を「${isCorrect ? '〇' : '×'}」にしますか?既存の入力は上書きされます。`)) return;
+  session.items.forEach((_, idx) => {
+    session.results[idx] = isCorrect ? 'correct' : 'incorrect';
+  });
+  await dbPut('paperSessions', session);
+  renderPaperInput();
+}
+
+async function paperClearAll() {
+  const session = paperState.session;
+  if (!session) return;
+  if (!confirm('全ての入力をクリアしますか?')) return;
+  session.results = {};
+  await dbPut('paperSessions', session);
+  renderPaperInput();
+}
+
+function confirmDeletePaperSession() {
+  const session = paperState.session;
+  if (!session) return;
+  showModal('セッションを削除', `「${session.typeLabel} ${session.titleSuffix}」のセッションを削除しますか?\n入力した結果も全て破棄されます。`, async () => {
+    await dbDelete('paperSessions', session.id);
+    paperState.session = null;
+    closeModal();
+    showToast('セッションを削除しました');
+    goHome();
+  });
+}
+
+async function submitPaperResult() {
+  const session = paperState.session;
+  if (!session) return;
+
+  const total = session.items.length;
+  const entered = Object.keys(session.results).length;
+
+  if (entered < total) {
+    if (!confirm(`未入力が${total - entered}問あります。\n未入力は不正解として採点されます。続行しますか?`)) return;
+  }
+
+  // 採点
+  let correctCount = 0;
+  const subjectStats = {};
+  for (let idx = 0; idx < session.items.length; idx++) {
+    const item = session.items[idx];
+    const result = session.results[idx];
+    const isCorrect = result === 'correct';
+    if (isCorrect) correctCount++;
+
+    if (!subjectStats[item.subject]) subjectStats[item.subject] = { correct: 0, total: 0 };
+    subjectStats[item.subject].total++;
+    if (isCorrect) subjectStats[item.subject].correct++;
+
+    // 学習履歴に反映
+    if (session.recordHistory) {
+      await saveProgress(item.questionId, isCorrect);
+    }
+  }
+
+  // examStateの結果画面を再利用するため、必要な情報を流し込む
+  // 「間違いを復習」で showQuestion() が使えるよう、マスタから完全な問題情報を引いてくる
+  const masterById = {};
+  state.questions.forEach(q => { masterById[q.id] = q; });
+
+  examState.examType = session.examType;
+  examState.startTime = new Date(session.createdAt);
+  examState.endTime = new Date();
+  examState.questions = session.items.map(it => {
+    const master = masterById[it.questionId];
+    // マスタに残っていればそれを使う(choices/questionText/explanation等が揃う)
+    // 万一見つからない場合のみ最小フィールドで補う
+    if (master) return master;
+    return {
+      id: it.questionId,
+      subject: it.subject,
+      section: it.section,
+      correctAnswers: it.mappedCorrect,
+      // フォールバック用の最低限のフィールド
+      examType: session.examType,
+      year: '',
+      questionNo: '',
+      questionText: '(問題本文を取得できませんでした)',
+      choices: ['', '', '', ''],
+      explanation: ''
+    };
+  });
+  examState.answers = {};
+  examState.choiceOrders = {};
+  // 結果を擬似的に作る(answersを正解/不正解に応じて埋める)
+  session.items.forEach((it, idx) => {
+    if (session.results[idx] === 'correct') {
+      // 正解番号(配列の最初)を入力済みと見なす
+      examState.answers[idx] = it.mappedCorrect[0];
+    } else if (session.results[idx] === 'incorrect') {
+      // 不正解 = 正解番号以外を入れる
+      const wrongNum = [1, 2, 3, 4].find(n => !it.mappedCorrect.includes(n));
+      examState.answers[idx] = wrongNum;
+    }
+    examState.choiceOrders[idx] = { order: it.choiceOrder, mappedCorrect: it.mappedCorrect };
+  });
+
+  // 結果画面の表示
+  const percentage = Math.round((correctCount / total) * 100);
+  const passThreshold = Math.floor(total * 0.6);
+  const isPassed = correctCount >= passThreshold;
+
+  document.getElementById('result-score').textContent = `${correctCount} / ${total}`;
+  document.getElementById('result-percentage').textContent = `${percentage}%`;
+  const judgment = document.getElementById('result-judgment');
+  if (isPassed) {
+    judgment.textContent = '✓ 合格ライン到達';
+    judgment.style.color = '#4caf50';
+  } else {
+    judgment.textContent = `あと${passThreshold - correctCount}問で合格ライン`;
+    judgment.style.color = '#ffd54f';
+  }
+
+  // 科目別
+  const SUBJECT_ORDER = ['医療概論', '衛生学・公衆衛生学', '関係法規', '解剖学', '生理学', '病理学概論', '臨床医学総論', '臨床医学各論', 'リハビリテーション医学', '総合問題(基礎科目)', '東洋医学概論', '経絡経穴概論', '東洋医学臨床論', '総合問題(専門科目)', 'はり理論', 'きゅう理論', 'あマ指理論', 'あん摩マッサージ指圧理論'];
+  const list = document.getElementById('result-subject-list');
+  list.innerHTML = '';
+  const sorted = Object.entries(subjectStats).sort((a, b) => {
+    const ai = SUBJECT_ORDER.indexOf(a[0]);
+    const bi = SUBJECT_ORDER.indexOf(b[0]);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    return 0;
+  });
+  sorted.forEach(([name, stat]) => {
+    const pct = Math.round((stat.correct / stat.total) * 100);
+    const div = document.createElement('div');
+    div.className = 'subject-result-row';
+    div.innerHTML = `
+      <span style="flex: 1; min-width: 120px;">${escapeHtml(name)}</span>
+      <span style="font-size: 12px; color: #7a8a99;">${stat.correct}/${stat.total}</span>
+      <div class="subject-result-bar"><div class="subject-result-bar-fill" style="width: ${pct}%;"></div></div>
+      <span style="font-weight: 600; min-width: 36px; text-align: right;">${pct}%</span>
+    `;
+    list.appendChild(div);
+  });
+
+  // 所要時間欄を「自己採点」に置き換え
+  document.getElementById('result-time').textContent = `📝 紙試験 自己採点`;
+
+  // セッションは採点完了後に削除
+  await dbDelete('paperSessions', session.id);
+  paperState.session = null;
+
+  if (session.recordHistory) {
+    showToast('採点完了。学習履歴に反映しました');
+  } else {
+    showToast('採点完了');
+  }
+
+  showScreen('exam-result', '試験結果', `紙試験(${session.typeLabel})`);
+}
+
+function reviewExamWrong() {
+  // 間違いだけを抽出(出題順そのまま=問1から順)
+  const wrongQs = [];
+  examState.questions.forEach((q, idx) => {
+    const userAns = examState.answers[idx];
+    const orderInfo = examState.choiceOrders[idx];
+    const correctSet = orderInfo ? orderInfo.mappedCorrect : q.correctAnswers;
+    const isCorrect = userAns !== undefined && correctSet.includes(userAns);
+    if (!isCorrect) wrongQs.push(q);
+  });
+  if (wrongQs.length === 0) {
+    showToast('間違えた問題はありません');
+    return;
+  }
+  state.questionQueue = wrongQs;
+  state.currentIndex = 0;
+  state.currentMode = 'exam_review';
+  state.currentSubject = null;
+  // 元の本試験で学習履歴に反映しない設定だった場合(AI作成問題など)、
+  // 復習画面でも反映しない
+  state.skipProgressSave = (examState.recordHistory === false);
+  // 本試験中の選択肢メモを間違い復習用に引き継ぐ（問題IDをキーに変換）
+  if (!state.choiceNotes) state.choiceNotes = {};
+  examState.questions.forEach((q, idx) => {
+    if (examState.choiceNotes[idx] && Object.keys(examState.choiceNotes[idx]).length > 0) {
+      state.choiceNotes[q.id] = { ...examState.choiceNotes[idx] };
+    }
+  });
+  showQuestion();
+}
+
+//=========================================================
+// 問題検索
+//=========================================================
+function goSearch() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  showScreen('search', '問題検索', '問題文・選択肢から検索');
+  // ラジオボタンの見た目を更新
+  updateSearchTargetUI();
+  // 前回の結果をリセット
+  document.getElementById('search-status').textContent = '';
+  document.getElementById('search-results').style.display = 'none';
+  // ラジオ変更時にUIを更新
+  document.querySelectorAll('input[name="search-target"]').forEach(r => {
+    r.onchange = updateSearchTargetUI;
+  });
+  // Enterキーで検索
+  const input = document.getElementById('search-input');
+  input.onkeydown = (e) => { if (e.key === 'Enter') execSearch(); };
+}
+
+function updateSearchTargetUI() {
+  const qLabel = document.getElementById('search-target-q-label');
+  const cLabel = document.getElementById('search-target-c-label');
+  const qChecked = document.getElementById('search-target-q').checked;
+  if (qLabel) {
+    qLabel.style.borderColor = qChecked ? '#2c5f7c' : '#d4dde4';
+    qLabel.style.background  = qChecked ? '#e3f0f7' : '#f5f7fa';
+    qLabel.style.fontWeight  = qChecked ? '600' : '400';
+  }
+  if (cLabel) {
+    cLabel.style.borderColor = !qChecked ? '#2c5f7c' : '#d4dde4';
+    cLabel.style.background  = !qChecked ? '#e3f0f7' : '#f5f7fa';
+    cLabel.style.fontWeight  = !qChecked ? '600' : '400';
+  }
+}
+
+function onSearchInput() {
+  // 入力中はステータスをクリア
+  document.getElementById('search-status').textContent = '';
+}
+
+// 全角↔半角を統一する正規化（英数字・記号を半角に、カタカナは全角に統一）
+function normalizeText(str) {
+  if (!str) return '';
+  return str
+    // 全角英数字・記号 → 半角
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, s => String.fromCharCode(s.charCodeAt(0) - 0xFEE0))
+    // 全角スペース → 半角
+    .replace(/　/g, ' ')
+    // 半角カタカナ → 全角カタカナ
+    .replace(/[\uFF65-\uFF9F]/g, s => {
+      const map = {
+        'ｦ':'ヲ','ｧ':'ァ','ｨ':'ィ','ｩ':'ゥ','ｪ':'ェ','ｫ':'ォ','ｬ':'ャ','ｭ':'ュ','ｮ':'ョ',
+        'ｯ':'ッ','ｰ':'ー','ｱ':'ア','ｲ':'イ','ｳ':'ウ','ｴ':'エ','ｵ':'オ','ｶ':'カ','ｷ':'キ',
+        'ｸ':'ク','ｹ':'ケ','ｺ':'コ','ｻ':'サ','ｼ':'シ','ｽ':'ス','ｾ':'セ','ｿ':'ソ','ﾀ':'タ',
+        'ﾁ':'チ','ﾂ':'ツ','ﾃ':'テ','ﾄ':'ト','ﾅ':'ナ','ﾆ':'ニ','ﾇ':'ヌ','ﾈ':'ネ','ﾉ':'ノ',
+        'ﾊ':'ハ','ﾋ':'ヒ','ﾌ':'フ','ﾍ':'ヘ','ﾎ':'ホ','ﾏ':'マ','ﾐ':'ミ','ﾑ':'ム','ﾒ':'メ',
+        'ﾓ':'モ','ﾔ':'ヤ','ﾕ':'ユ','ﾖ':'ヨ','ﾗ':'ラ','ﾘ':'リ','ﾙ':'ル','ﾚ':'レ','ﾛ':'ロ',
+        'ﾜ':'ワ','ﾝ':'ン','ﾞ':'゛','ﾟ':'゜','･':'・','ｦ':'ヲ','ｰ':'ー','｢':'「','｣':'」','､':'、','｡':'。'
+      };
+      return map[s] || s;
+    })
+    .toLowerCase();
+}
+
+function execSearch() {
+  const raw      = (document.getElementById('search-input').value || '').trim();
+  const target   = document.querySelector('input[name="search-target"]:checked').value;
+  const statusEl = document.getElementById('search-status');
+  const resultsWrap = document.getElementById('search-results');
+
+  // ① 未入力チェック
+  if (!raw) {
+    statusEl.style.color = '#e09b2d';
+    statusEl.textContent = '⚠️ 検索ワードを入力してください';
+    resultsWrap.style.display = 'none';
+    return;
+  }
+
+  // スペース（全角・半角）で分割してAND条件化、空文字除去・正規化
+  const keywords = raw.split(/[\s　]+/).filter(k => k.length > 0).map(k => normalizeText(k));
+
+  // 全問題から検索（AI作成問題は除外、除外年度も除く、試験種別フィルターは考慮しない）
+  const allQ = state.questions.filter(q => {
+    const yr = Number(q.year);
+    if (isNaN(yr)) return false; // AI作成問題は検索対象外
+    return !isYearExcluded(q);
+  });
+
+  // ② 全キーワードがすべてヒットする問題を抽出（AND検索・正規化済みテキストで比較）
+  const matched = allQ.filter(q => {
+    if (target === 'question') {
+      const text = normalizeText(q.questionText);
+      return keywords.every(kw => text.includes(kw));
+    } else {
+      const allChoices = normalizeText((q.choices || []).join(' '));
+      return keywords.every(kw => allChoices.includes(kw));
+    }
+  });
+
+  // ③ 50件以上チェック
+  if (matched.length >= 50) {
+    statusEl.style.color = '#e09b2d';
+    statusEl.textContent = `⚠️ ${matched.length}件以上ヒットしました。より詳細なワードで検索してください。`;
+    resultsWrap.style.display = 'none';
+    return;
+  }
+
+  // ④ 0件
+  if (matched.length === 0) {
+    statusEl.style.color = '#7a8a99';
+    statusEl.textContent = '該当する問題が見つかりませんでした。';
+    resultsWrap.style.display = 'none';
+    return;
+  }
+
+  // ⑤ 結果表示
+  const kwLabel = keywords.length > 1 ? keywords.map(k => `「${k}」`).join(' AND ') : `「${keywords[0]}」`;
+  statusEl.style.color = '#2c5f7c';
+  statusEl.textContent = `${matched.length}件 ヒット（${kwLabel}）`;
+
+  document.getElementById('search-result-label').textContent =
+    `検索結果: ${matched.length}件（タップで問題を確認）`;
+
+  const listEl = document.getElementById('search-result-list');
+  listEl.innerHTML = '';
+
+  // 複数キーワードをすべてハイライトする関数（正規化して位置を特定し元テキストに印をつける）
+  function highlight(text) {
+    if (!text) return '';
+    // 正規化済みテキストで各キーワードの出現位置を特定し、元テキストに<mark>を付ける
+    const normText = normalizeText(text);
+    // マークすべき範囲を収集
+    const ranges = [];
+    keywords.forEach(kw => {
+      const kwEsc = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(kwEsc, 'gi');
+      let m;
+      while ((m = re.exec(normText)) !== null) {
+        ranges.push([m.index, m.index + m[0].length]);
+      }
+    });
+    if (ranges.length === 0) return escapeHtml(text);
+    // 範囲をマージ・ソート
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged = [];
+    ranges.forEach(([s, e]) => {
+      if (merged.length && s <= merged[merged.length - 1][1]) {
+        merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+      } else {
+        merged.push([s, e]);
+      }
+    });
+    // 元テキストを<mark>で分割（位置はnormTextと同じ文字数なので共用可）
+    let result = '';
+    let pos = 0;
+    merged.forEach(([s, e]) => {
+      result += escapeHtml(text.slice(pos, s));
+      result += '<mark>' + escapeHtml(text.slice(s, e)) + '</mark>';
+      pos = e;
+    });
+    result += escapeHtml(text.slice(pos));
+    return result;
+  }
+
+  matched.forEach(q => {
+    const card = document.createElement('div');
+    card.className = 'search-result-card';
+
+    const typeLabel = q.examType === 'hari_kyu' ? 'はりきゅう' : q.examType === 'amashi' ? 'あマ指' : q.examType;
+    const typeCls   = q.examType === 'amashi' ? 'exam-type amashi' : 'exam-type';
+
+    // 選択肢プレビュー（いずれかのキーワードがヒットした選択肢を表示）
+    let choicesHtml = '';
+    if (target === 'choices') {
+      const hitChoices = (q.choices || [])
+        .map((c, i) => ({ c, i }))
+        .filter(({ c }) => keywords.some(kw => (c || '').toLowerCase().includes(kw)));
+      choicesHtml = `<div class="choices-preview">`
+        + hitChoices.map(({ c, i }) => `<div>${i + 1}. ${highlight(c)}</div>`).join('')
+        + `</div>`;
+    }
+
+    card.innerHTML = `
+      <div class="meta">
+        <span class="badge ${typeCls}">${escapeHtml(typeLabel)}</span>
+        <span class="badge">第${escapeHtml(String(q.year))}回</span>
+        <span class="badge subject">${escapeHtml(q.subject)}</span>
+        <span style="font-size: 12px; color: #7a8a99; margin-left: auto;">問${escapeHtml(String(q.questionNo))}</span>
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:${(state.memos[q.id] && state.memos[q.id].trim()) || (state.mutedQuestions && state.mutedQuestions[q.id]) ? '6px' : '0'};">
+        ${(state.memos[q.id] && state.memos[q.id].trim()) ? '<span style="font-size:11px;background:#2c5f7c;color:white;padding:2px 8px;border-radius:10px;">📝 メモあり</span>' : ''}
+        ${(state.mutedQuestions && state.mutedQuestions[q.id]) ? '<span style="font-size:11px;background:#ffc107;color:#212529;padding:2px 8px;border-radius:10px;font-weight:600;">🚫 出題除外</span>' : ''}
+      </div>
+      <div class="q-text">${highlight(q.questionText)}</div>
+      ${choicesHtml}
+    `;
+
+    card.onclick = () => openSearchedQuestion(q);
+    listEl.appendChild(card);
+  });
+
+  resultsWrap.style.display = 'block';
+}
+
+// 検索結果から1問を単独で演習画面へ表示
+function openSearchedQuestion(q) {
+  state.questionQueue   = [q];
+  state.currentIndex    = 0;
+  state.currentMode     = 'search';
+  state.currentSubject  = null;
+  state.skipProgressSave = false;
+  showQuestion();
+}
+
+//=========================================================
+// ホーム画面
+//=========================================================
+function updateHomeStats() {
+  const filtered = filterByExamType(state.questions);
+  document.getElementById('stat-total').textContent = filtered.length;
+
+  const today = new Date().toISOString().slice(0, 10);
+  const filteredIds = new Set(filtered.map(q => q.id));
+
+  // 解答済み・復習対象ともに除外年度を考慮
+  const filteredProgress = Object.values(state.progress).filter(p => filteredIds.has(p.questionId));
+  document.getElementById('stat-answered').textContent = filteredProgress.length;
+
+  const dueCount = filteredProgress.filter(p => p.nextReviewAt && p.nextReviewAt <= today).length;
+  document.getElementById('stat-due').textContent = dueCount;
+
+  // 紙試験セッション一覧を非同期で更新
+  updatePaperSessionsNotice();
+}
+
+async function updatePaperSessionsNotice() {
+  const notice = document.getElementById('paper-sessions-notice');
+  if (!notice) return;
+  let sessions = [];
+  try {
+    sessions = await dbGetAll('paperSessions');
+  } catch (e) {
+    notice.style.display = 'none';
+    return;
+  }
+  if (sessions.length === 0) {
+    notice.style.display = 'none';
+    notice.innerHTML = '';
+    return;
+  }
+  // 新しい順
+  sessions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+  notice.style.display = 'block';
+  notice.innerHTML = '<div style="font-size:12px;color:#7a8a99;font-weight:600;margin:0 4px 6px;letter-spacing:1px;">━ 紙試験 結果入力待ち</div>' +
+    sessions.map(s => {
+      const date = s.createdAt.slice(0, 10).replace(/-/g, '/');
+      const time = s.createdAt.slice(11, 16);
+      const total = s.items.length;
+      const entered = Object.keys(s.results || {}).length;
+      const isComplete = entered >= total;
+      return `
+        <div class="paper-session-card" onclick="openPaperInput('${s.id}')">
+          <div class="title">📝 ${escapeHtml(s.typeLabel)} ${escapeHtml(s.titleSuffix)}</div>
+          <div class="meta">作成日: ${date} ${time} / ${total}問</div>
+          <div class="progress-mini">${isComplete ? '✓ 入力完了 - 採点する' : `入力中: ${entered}/${total}問`}</div>
+        </div>
+      `;
+    }).join('');
+}
+
+// 除外年度判定ヘルパー（examType + year の複合キーで判定）
+function isYearExcluded(q) {
+  const excludeYears = state.settings.excludeYears || [];
+  if (excludeYears.length === 0) return false;
+  const yr = Number(q.year);
+  if (isNaN(yr)) return false; // AI作成問題は対象外
+  return excludeYears.includes(`${q.examType}_${yr}`);
+}
+
+function filterByExamType(questions) {
+  // yearが数値以外の問題は本試験モード専用のため、通常モードから除外
+  let normalQuestions = questions.filter(q => !isNaN(Number(q.year)));
+  // 除外年度フィルター（examType別に独立して判定）
+  normalQuestions = normalQuestions.filter(q => !isYearExcluded(q));
+  // 出題除外問題を除外（科目別演習で「出題しない問題」を選んだ場合は除外しない）
+  if (state.currentMode !== 'subject' || state.currentSubject !== MUTED_SUBJECT) {
+    normalQuestions = normalQuestions.filter(q => !isMutedQuestion(q));
+  }
+  if (state.settings.examType === 'all') return normalQuestions;
+  return normalQuestions.filter(q => q.examType === state.settings.examType);
+}
+
+//=========================================================
+// 画面遷移
+//=========================================================
+function showScreen(id, title, subtitle) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+  if (title) document.getElementById('screen-title').textContent = title;
+  document.getElementById('screen-subtitle').textContent = subtitle || '';
+  window.scrollTo(0, 0);
+}
+
+function goHome() {
+  // 本試験中なら確認
+  if (examState.isRunning) {
+    if (!confirm('本試験を中断してホームに戻りますか?\n(進捗は破棄されます)')) return;
+    examState.isRunning = false;
+    if (examState.timerInterval) {
+      clearInterval(examState.timerInterval);
+      examState.timerInterval = null;
+    }
+  }
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-home').classList.add('active');
+  showScreen('home', '国試学習アプリ', '');
+  updateHomeStats();
+}
+
+function goSettings() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-settings').classList.add('active');
+  renderSettingsYearList();
+  // アプリ本体バージョンを表示（APP_VERSION と自動連動）
+  const appEl = document.getElementById('setting-app-version');
+  if (appEl) {
+    appEl.textContent = 'アプリ: ver.' + APP_VERSION;
+  }
+  // 問題データバージョンを表示（取り込み済みデータ基準）
+  const el = document.getElementById('setting-q-version');
+  if (el) {
+    dbGet('questionData', 'current').then(rec => {
+      if (rec && Array.isArray(rec.questions)) {
+        el.textContent = '問題データ: ver.' + (rec.questionDataVersion || '—') + '（' + rec.questions.length + '問）';
+      } else {
+        el.textContent = '問題データ: 未取り込み';
+      }
+    });
+  }
+  showScreen('settings', '設定', '');
+}
+
+//=========================================================
+// 問題データの再取り込み（設定画面などから呼ぶ）
+//=========================================================
+function reimportQuestionData() {
+  let inp = document.getElementById('reimport-file');
+  if (!inp) {
+    inp = document.createElement('input');
+    inp.type = 'file';
+    inp.id = 'reimport-file';
+    inp.accept = 'application/json,.json';
+    inp.style.display = 'none';
+    inp.onchange = importQuestionFile;
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+
+// 互換：旧「更新確認」関数は、データ再取り込みの導線に置き換え。
+async function performUpdateCheck() { reimportQuestionData(); }
+async function manualUpdateCheck() { reimportQuestionData(); }
+
+function openManual() {
+  const modal = document.getElementById('manual-modal');
+  const frame = document.getElementById('manual-frame');
+  // iframeに説明書をロード（同一リポジトリのmanual.html）
+  if (!frame.src || frame.src === window.location.href) {
+    frame.src = './manual.html';
+  }
+  modal.classList.add('show');
+}
+
+function closeManual() {
+  document.getElementById('manual-modal').classList.remove('show');
+}
+
+function goStats() {
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('nav-stats').classList.add('active');
+  renderStats();
+  showScreen('stats', '学習統計', '');
+}
+
+function renderStats() {
+  const filtered = filterByExamType(state.questions);
+  const totalQ = filtered.length;
+  const today = new Date().toISOString().slice(0, 10);
+
+  // 進捗データ(filterに該当するもののみ)
+  const filteredIds = new Set(filtered.map(q => q.id));
+  const progressList = Object.values(state.progress).filter(p => filteredIds.has(p.questionId));
+
+  const answered = progressList.length;
+  const totalCorrect = progressList.reduce((s, p) => s + (p.correctCount || 0), 0);
+  const totalAttempt = progressList.reduce((s, p) => s + (p.correctCount || 0) + (p.incorrectCount || 0), 0);
+  const accuracy = totalAttempt > 0 ? Math.round((totalCorrect / totalAttempt) * 100) : null;
+  const mastered = progressList.filter(p => p.intervalLevel >= 4).length;
+  const dueToday = progressList.filter(p => p.nextReviewAt && p.nextReviewAt <= today).length;
+  const notTried = totalQ - answered;
+
+  document.getElementById('stats-total-q').textContent = totalQ;
+  document.getElementById('stats-answered-q').textContent = answered;
+  document.getElementById('stats-accuracy').textContent = accuracy === null ? '―' : `${accuracy}%`;
+  document.getElementById('stats-mastered').textContent = mastered;
+  document.getElementById('stats-due-today').textContent = dueToday;
+  document.getElementById('stats-not-tried').textContent = notTried;
+
+  // 直近の学習(直近7日の解答数)
+  const recentList = document.getElementById('stats-recent-list');
+  if (progressList.length === 0) {
+    recentList.innerHTML = '<div style="color:#7a8a99;text-align:center;padding:20px 0;">学習履歴がまだありません</div>';
+  } else {
+    const dayCount = {};
+    progressList.forEach(p => {
+      if (!p.lastAnsweredAt) return;
+      const d = p.lastAnsweredAt.slice(0, 10);
+      dayCount[d] = (dayCount[d] || 0) + 1;
+    });
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      days.push({ key, count: dayCount[key] || 0, label: `${d.getMonth() + 1}/${d.getDate()}` });
+    }
+    const maxC = Math.max(1, ...days.map(d => d.count));
+    recentList.innerHTML = days.map(d => `
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0;">
+        <span style="width:40px;font-size:12px;color:#7a8a99;">${d.label}</span>
+        <div style="flex:1;height:14px;background:#eef4f8;border-radius:7px;overflow:hidden;">
+          <div style="height:100%;width:${(d.count / maxC) * 100}%;background:#2c5f7c;"></div>
+        </div>
+        <span style="min-width:40px;text-align:right;font-weight:600;font-size:13px;">${d.count}問</span>
+      </div>
+    `).join('');
+  }
+
+  // 科目別進度率(レベル別積み上げグラフ)
+  const subjStats = {};
+  filtered.forEach(q => {
+    if (!subjStats[q.subject]) subjStats[q.subject] = { totalQ: 0, levelCounts: [0, 0, 0, 0, 0, 0], section: q.section };
+    subjStats[q.subject].totalQ++;
+    const p = state.progress[q.id];
+    const lv = p ? Math.min(p.intervalLevel || 0, 5) : 0;
+    subjStats[q.subject].levelCounts[lv]++;
+  });
+
+  const SUBJECT_ORDER = ['医療概論', '衛生学・公衆衛生学', '関係法規', '解剖学', '生理学', '病理学概論', '臨床医学総論', '臨床医学各論', 'リハビリテーション医学', '総合問題(基礎科目)', '東洋医学概論', '経絡経穴概論', '東洋医学臨床論', '総合問題(専門科目)', 'はり理論', 'きゅう理論', 'あマ指理論', 'あん摩マッサージ指圧理論'];
+  const subjList = document.getElementById('stats-subject-list');
+  const subjEntries = Object.entries(subjStats).filter(([n, s]) => s.totalQ > 0).sort((a, b) => {
+    const ai = SUBJECT_ORDER.indexOf(a[0]);
+    const bi = SUBJECT_ORDER.indexOf(b[0]);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a[0].localeCompare(b[0], 'ja');
+  });
+
+  if (subjEntries.length === 0) {
+    subjList.innerHTML = '<div style="color:#7a8a99;text-align:center;padding:20px 0;">問題データがありません</div>';
+  } else {
+    // レベル別の色(進度を示す)
+    const levelColors = ['#e0e0e0', '#f44336', '#ffc107', '#8bc34a', '#4caf50', '#2196f3'];
+    const levelLabels = ['未学習', 'Lv1', 'Lv2', 'Lv3', 'Lv4', 'Lv5'];
+
+    // 凡例
+    let legendHtml = '<div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:#4a5a6a;margin-bottom:10px;padding:8px;background:#f5f7fa;border-radius:6px;">';
+    levelLabels.forEach((lbl, i) => {
+      legendHtml += `<span style="display:inline-flex;align-items:center;gap:3px;"><span style="display:inline-block;width:10px;height:10px;background:${levelColors[i]};border-radius:2px;"></span>${lbl}</span>`;
+    });
+    legendHtml += '</div>';
+
+    let bodyHtml = '';
+    subjEntries.forEach(([name, s]) => {
+      // 進度スコア(0〜100):各レベルに重みをつけて加重平均
+      // Lv0=0, Lv1=10, Lv2=25, Lv3=45, Lv4=70, Lv5=100
+      const weights = [0, 10, 25, 45, 70, 100];
+      const score = s.levelCounts.reduce((sum, c, i) => sum + c * weights[i], 0) / s.totalQ;
+      const scoreRounded = Math.round(score);
+
+      // 積み上げセグメント
+      let segHtml = '';
+      s.levelCounts.forEach((c, i) => {
+        if (c === 0) return;
+        const pct = (c / s.totalQ) * 100;
+        segHtml += `<div title="${levelLabels[i]}: ${c}問" style="height:100%;width:${pct}%;background:${levelColors[i]};display:flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:600;">${c >= 2 ? c : ''}</div>`;
+      });
+
+      bodyHtml += `
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+            <span style="font-size:13px;font-weight:500;">${escapeHtml(name)}</span>
+            <span style="font-size:11px;color:#7a8a99;">進度 ${scoreRounded}% / 全${s.totalQ}問</span>
+          </div>
+          <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;background:#e0e0e0;">${segHtml}</div>
+        </div>
+      `;
+    });
+
+    subjList.innerHTML = legendHtml + bodyHtml;
+  }
+
+  // 年度別進度
+  const yearStats = {};
+  filtered.forEach(q => {
+    const key = `${q.examType}_${q.year}`;
+    if (!yearStats[key]) yearStats[key] = { totalQ: 0, levelCounts: [0, 0, 0, 0, 0, 0], examType: q.examType, year: q.year };
+    yearStats[key].totalQ++;
+    const p = state.progress[q.id];
+    const lv = p ? Math.min(p.intervalLevel || 0, 5) : 0;
+    yearStats[key].levelCounts[lv]++;
+  });
+
+  const yearList = document.getElementById('stats-year-list');
+  const yearEntries = Object.values(yearStats).sort((a, b) => {
+    if (a.examType !== b.examType) return a.examType < b.examType ? -1 : 1;
+    return b.year - a.year;
+  });
+
+  if (yearEntries.length === 0) {
+    yearList.innerHTML = '<div style="color:#7a8a99;text-align:center;padding:20px 0;">問題データがありません</div>';
+  } else {
+    const levelColors = ['#e0e0e0', '#f44336', '#ffc107', '#8bc34a', '#4caf50', '#2196f3'];
+    const weights = [0, 10, 25, 45, 70, 100];
+
+    let bodyHtml = '';
+    yearEntries.forEach(s => {
+      const score = s.levelCounts.reduce((sum, c, i) => sum + c * weights[i], 0) / s.totalQ;
+      const scoreRounded = Math.round(score);
+      const typeLabel = s.examType === 'hari_kyu' ? 'はりきゅう' : 'あマ指';
+
+      let segHtml = '';
+      s.levelCounts.forEach((c, i) => {
+        if (c === 0) return;
+        const pct = (c / s.totalQ) * 100;
+        segHtml += `<div title="Lv${i}: ${c}問" style="height:100%;width:${pct}%;background:${levelColors[i]};display:flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:600;">${c >= 3 ? c : ''}</div>`;
+      });
+
+      bodyHtml += `
+        <div style="margin-bottom:10px;">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;">
+            <span style="font-size:13px;font-weight:500;">${typeLabel} ${formatYearLabel(s.year)}</span>
+            <span style="font-size:11px;color:#7a8a99;">進度 ${scoreRounded}% / 全${s.totalQ}問</span>
+          </div>
+          <div style="display:flex;height:18px;border-radius:4px;overflow:hidden;background:#e0e0e0;">${segHtml}</div>
+        </div>
+      `;
+    });
+
+    yearList.innerHTML = bodyHtml;
+  }
+
+  // 復習レベル分布
+  const intervalLabels = ['未学習(レベル0)', 'レベル1(2日後)', 'レベル2(3日後)', 'レベル3(7日後)', 'レベル4(14日後)', 'レベル5(30日後)'];
+  const intervalCounts = [0, 0, 0, 0, 0, 0];
+  filtered.forEach(q => {
+    const p = state.progress[q.id];
+    const lv = p ? Math.min(p.intervalLevel || 0, 5) : 0;
+    intervalCounts[lv]++;
+  });
+  const totalI = intervalCounts.reduce((a, b) => a + b, 0) || 1;
+  document.getElementById('stats-interval-list').innerHTML = intervalLabels.map((lbl, i) => {
+    const c = intervalCounts[i];
+    const pct = (c / totalI) * 100;
+    const colors = ['#cbd5dd', '#f44336', '#ffc107', '#8bc34a', '#4caf50', '#2196f3'];
+    return `
+      <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;">
+        <span style="flex:1;min-width:120px;">${lbl}</span>
+        <div style="flex:1;height:10px;background:#eef4f8;border-radius:5px;overflow:hidden;max-width:120px;">
+          <div style="height:100%;width:${pct}%;background:${colors[i]};"></div>
+        </div>
+        <span style="min-width:40px;text-align:right;font-weight:600;">${c}</span>
+      </div>
+    `;
+  }).join('');
+}
+
+function goSubjectSelect() {
+  const filtered = filterByExamType(state.questions);
+  const subjects = {};
+  filtered.forEach(q => {
+    if (!subjects[q.subject]) subjects[q.subject] = { count: 0, section: q.section };
+    subjects[q.subject].count++;
+  });
+
+  // 本試験出題順(科目分類表に準拠)
+  const SUBJECT_ORDER = [
+    // AM(基礎)
+    '医療概論',
+    '衛生学・公衆衛生学',
+    '関係法規',
+    '解剖学',
+    '生理学',
+    '病理学概論',
+    '臨床医学総論',
+    '臨床医学各論',
+    'リハビリテーション医学',
+    '総合問題(基礎科目)',
+    // PM(専門)
+    '東洋医学概論',
+    '経絡経穴概論',
+    '東洋医学臨床論',
+    '総合問題(専門科目)',
+    'はり理論',
+    'きゅう理論',
+    'あマ指理論',
+    'あん摩マッサージ指圧理論'
+  ];
+
+  // 並び順:既知の科目は上記順序、未知の科目は末尾にアルファベット順
+  const sortedSubjects = Object.entries(subjects).sort((a, b) => {
+    const ai = SUBJECT_ORDER.indexOf(a[0]);
+    const bi = SUBJECT_ORDER.indexOf(b[0]);
+    if (ai !== -1 && bi !== -1) return ai - bi;
+    if (ai !== -1) return -1;
+    if (bi !== -1) return 1;
+    return a[0].localeCompare(b[0], 'ja');
+  });
+
+  const container = document.getElementById('subject-list');
+  container.innerHTML = '';
+
+  // AM科目とPM科目に分ける(「不適切問題」は別途その他扱い)
+  const amSubjects = sortedSubjects.filter(([n, info]) => info.section === 'AM' && n !== '不適切問題');
+  const pmSubjects = sortedSubjects.filter(([n, info]) => info.section === 'PM' && n !== '不適切問題');
+  const otherSubjects = sortedSubjects.filter(([n, info]) => (info.section !== 'AM' && info.section !== 'PM') || n === '不適切問題');
+
+  function appendSection(label, list) {
+    if (list.length === 0) return;
+    const heading = document.createElement('div');
+    heading.style.cssText = 'font-size:12px;color:#7a8a99;font-weight:600;margin:8px 4px 4px;letter-spacing:1px;';
+    heading.textContent = label;
+    container.appendChild(heading);
+    list.forEach(([name, info]) => {
+      const div = document.createElement('div');
+      div.className = 'subject-item';
+      div.innerHTML = `<span class="name">${escapeHtml(name)}</span><span class="count">${info.count}問</span>`;
+      div.onclick = () => startMode('subject', name);
+      container.appendChild(div);
+    });
+  }
+
+  appendSection('━ AM(基礎科目)', amSubjects);
+  appendSection('━ PM(専門科目)', pmSubjects);
+  if (otherSubjects.length > 0) appendSection('━ その他', otherSubjects);
+
+  // 「出題しない問題」を末尾に追加（1問以上ある場合のみ）
+  const mutedCount = state.questions.filter(q => isMutedQuestion(q) && !isNaN(Number(q.year))).length;
+  if (mutedCount > 0) {
+    const heading = document.createElement('div');
+    heading.style.cssText = 'font-size:12px;color:#7a8a99;font-weight:600;margin:8px 4px 4px;letter-spacing:1px;';
+    heading.textContent = '━ 出題除外';
+    container.appendChild(heading);
+    const div = document.createElement('div');
+    div.className = 'subject-item';
+    div.innerHTML = `<span class="name">🚫 出題しない問題</span><span class="count">${mutedCount}問</span>`;
+    div.onclick = () => startMutedMode();
+    container.appendChild(div);
+  }
+
+  if (Object.keys(subjects).length === 0 && mutedCount === 0) {
+    container.innerHTML = '<div class="empty-state"><div class="ico">📭</div><p>問題がありません</p></div>';
+  }
+  showScreen('subjects', '科目別演習', '科目を選んでください');
+}
+
+//=========================================================
+// 出題ロジック
+//=========================================================
+function startMutedMode() {
+  // 出題除外問題のみを科目別演習モードで出題
+  const pool = state.questions.filter(q => isMutedQuestion(q) && !isNaN(Number(q.year)));
+  if (pool.length === 0) { showToast('出題除外の問題がありません'); return; }
+  const untried = pool.filter(q => !state.progress[q.id]);
+  const tried = pool.filter(q => state.progress[q.id]);
+  tried.sort((a, b) => {
+    const da = state.progress[a.id]?.nextReviewAt || '9999-12-31';
+    const db = state.progress[b.id]?.nextReviewAt || '9999-12-31';
+    return da.localeCompare(db);
+  });
+  state.questionQueue = [...shuffleArray([...untried]), ...tried];
+  state.currentIndex = 0;
+  state.currentMode = 'subject';
+  state.currentSubject = MUTED_SUBJECT;
+  state.skipProgressSave = false;
+  showQuestion();
+}
+
+function startMode(mode, subject) {
+  state.currentMode = mode;
+  state.currentSubject = subject;
+  state.currentIndex = 0;
+  state.skipProgressSave = false;
+
+  let queue = filterByExamType(state.questions);
+  const today = new Date().toISOString().slice(0, 10);
+
+  if (mode === 'review') {
+    queue = queue.filter(q => {
+      const p = state.progress[q.id];
+      return p && p.nextReviewAt && p.nextReviewAt <= today;
+    });
+    if (queue.length === 0) {
+      showToast('復習対象の問題はありません');
+      return;
+    }
+    // 復習はシャッフル
+    queue = shuffleArray([...queue]);
+  } else if (mode === 'subject') {
+    // AI作成問題は科目別演習から除外
+    queue = queue.filter(q => q.subject === subject && !isNaN(Number(q.year)));
+
+    // 未出題優先 + 出題済みは復習日が近い順
+    const untried = queue.filter(q => !state.progress[q.id]);
+    const tried = queue.filter(q => state.progress[q.id]);
+    const shuffledUntried = shuffleArray([...untried]);
+    tried.sort((a, b) => {
+      const pa = state.progress[a.id];
+      const pb = state.progress[b.id];
+      const da = pa && pa.nextReviewAt ? pa.nextReviewAt : '9999-12-31';
+      const db = pb && pb.nextReviewAt ? pb.nextReviewAt : '9999-12-31';
+      return da.localeCompare(db);
+    });
+    queue = [...shuffledUntried, ...tried];
+  } else {
+    // その他(将来モード追加用)はシャッフル
+    queue = shuffleArray([...queue]);
+  }
+
+  state.questionQueue = queue;
+
+  if (queue.length === 0) {
+    showToast('該当する問題がありません');
+    return;
+  }
+
+  showQuestion();
+}
+
+function showQuestion() {
+  const q = state.questionQueue[state.currentIndex];
+  state.currentQuestion = q;
+  state.selectedChoice = null;
+  state.isAnswered = false;
+  // 選択肢メモ：exam_review（本試験→間違い復習）は本試験中のメモを引き継ぐため保持
+  // それ以外のモードは問題を開くたびにリセット（一回限りのメモ）
+  if (!state.choiceNotes) state.choiceNotes = {};
+  if (state.currentMode !== 'exam_review') state.choiceNotes[q.id] = {};
+
+  document.getElementById('progress-info').textContent = `問題 ${state.currentIndex + 1} / ${state.questionQueue.length}`;
+
+  // 試験種別バッジ
+  const examTypeBadge = document.getElementById('q-exam-type');
+  if (q.examType === 'amashi') {
+    examTypeBadge.textContent = 'あマ指';
+    examTypeBadge.classList.add('amashi');
+  } else {
+    examTypeBadge.textContent = 'はりきゅう';
+    examTypeBadge.classList.remove('amashi');
+  }
+
+  document.getElementById('q-year').textContent = formatYearLabel(q.year);
+  document.getElementById('q-subject').textContent = q.subject;
+  document.getElementById('q-no').textContent = `問${q.questionNo}`;
+  document.getElementById('q-text').textContent = q.questionText;
+
+  // 選択肢の表示順を決定
+  let order = [0, 1, 2, 3];
+  if (state.settings.shuffleChoices) order = shuffleArray(order);
+  state.currentChoiceOrder = order;
+
+  const choicesDiv = document.getElementById('q-choices');
+  choicesDiv.innerHTML = '';
+  order.forEach((origIdx, displayIdx) => {
+    const div = document.createElement('div');
+    div.className = 'choice';
+    div.dataset.origIdx = origIdx + 1; // 1始まり
+    div.innerHTML = `<span class="num">${displayIdx + 1}.</span><span style="flex:1;">${escapeHtml(q.choices[origIdx])}</span>`;
+    div.onclick = () => selectChoice(div, origIdx + 1);
+    // 選択肢メモボタン
+    const noteWrap = document.createElement('div');
+    noteWrap.className = 'choice-note-wrap';
+    noteWrap.addEventListener('click', e => e.stopPropagation()); // 選択肢クリックと分離
+    const noteTypes = [
+      { key: 'sei',  label: '正', cls: 'active-sei'  },
+      { key: 'go',   label: '誤', cls: 'active-go'   },
+      { key: 'hate', label: '?',  cls: 'active-hate' }
+    ];
+    noteTypes.forEach(nt => {
+      const btn = document.createElement('button');
+      btn.className = 'choice-note-btn';
+      btn.textContent = nt.label;
+      btn.dataset.noteKey = nt.key;
+      const cur = (state.choiceNotes[q.id] || {})[origIdx + 1];
+      if (cur === nt.key) btn.classList.add(nt.cls);
+      btn.onclick = () => {
+        const notes = state.choiceNotes[q.id] || {};
+        if (notes[origIdx + 1] === nt.key) {
+          delete notes[origIdx + 1]; // 同じボタンを押したらリセット
+        } else {
+          notes[origIdx + 1] = nt.key;
+        }
+        state.choiceNotes[q.id] = notes;
+        // 同じ選択肢の3ボタンを全更新
+        noteWrap.querySelectorAll('.choice-note-btn').forEach(b => {
+          noteTypes.forEach(t => b.classList.remove(t.cls));
+          const active = (state.choiceNotes[q.id] || {})[origIdx + 1];
+          if (active) {
+            const matched = noteTypes.find(t => t.key === active);
+            if (matched && b.dataset.noteKey === active) b.classList.add(matched.cls);
+          }
+        });
+      };
+      noteWrap.appendChild(btn);
+    });
+    div.appendChild(noteWrap);
+    choicesDiv.appendChild(div);
+  });
+
+  // メモ復元
+  document.getElementById('memo-area').value = state.memos[q.id] || '';
+
+  // UI 初期化
+  document.getElementById('result-banner').style.display = 'none';
+  document.getElementById('answer-area').classList.remove('show');
+  document.getElementById('memo-card').style.display = 'none';
+  document.getElementById('action-buttons').style.display = 'flex';
+  document.getElementById('submit-btn').disabled = true;
+  document.getElementById('next-btn').style.display = 'none';
+  document.getElementById('mute-btn').style.display = 'none';
+  document.getElementById('back-to-list-btn').style.display = 'none';
+
+  let title = '問題演習';
+  let subtitle = '';
+  if (state.currentMode === 'review') subtitle = '復習モード';
+  else if (state.currentMode === 'subject') subtitle = `科目別: ${state.currentSubject}`;
+  else if (state.currentMode === 'daily') subtitle = '今日の演習';
+  else if (state.currentMode === 'exam_review') subtitle = '間違いを復習';
+  else if (state.currentMode === 'memo_review') subtitle = 'メモ一覧';
+  else if (state.currentMode === 'muted_review') subtitle = '出題除外一覧';
+  else if (state.currentMode === 'search') subtitle = '検索結果';
+
+  showScreen('question', title, subtitle);
+
+  // 解答・解説を自動表示するモード（search / memo_review / muted_review）
+  const autoAnswerModes = ['search', 'memo_review', 'muted_review'];
+  if (autoAnswerModes.includes(state.currentMode)) {
+    // 正解選択肢をハイライト
+    document.querySelectorAll('.choice').forEach(c => {
+      const origIdx = parseInt(c.dataset.origIdx);
+      if (q.correctAnswers.includes(origIdx)) c.classList.add('correct');
+    });
+
+    // バナー
+    const banner = document.getElementById('result-banner');
+    banner.style.display = 'block';
+    banner.className = 'result-banner skipped';
+    banner.textContent = '📖 解答・解説';
+
+    // 解説
+    const expDiv = document.getElementById('explanation-content');
+    if (q.explanation && q.explanation.trim()) {
+      expDiv.textContent = q.explanation;
+      expDiv.classList.remove('empty');
+    } else {
+      expDiv.innerHTML = '<span class="empty">解説は未入力です。</span>';
+      expDiv.classList.add('empty');
+    }
+    document.getElementById('answer-area').classList.add('show');
+    document.getElementById('memo-card').style.display = 'block';
+
+    // 解答ボタン非表示・次へ非表示・戻るボタン表示
+    document.getElementById('action-buttons').style.display = 'none';
+    document.getElementById('next-btn').style.display = 'none';
+    document.getElementById('back-to-list-btn').style.display = 'block';
+    showMuteBtn(q.id);
+
+    state.isAnswered = true;
+  }
+}
+
+// 戻るボタンの処理：呼び元のリスト画面に戻る
+function backToList() {
+  const mode = state.currentMode;
+  if (mode === 'search') {
+    showScreen('search', '問題検索', '問題文・選択肢から検索');
+  } else if (mode === 'memo_review') {
+    goMemoList();
+  } else if (mode === 'muted_review') {
+    goMutedList();
+  } else {
+    goHome();
+  }
+}
+
+function selectChoice(div, origNum) {
+  if (state.isAnswered) return;
+  document.querySelectorAll('.choice').forEach(c => c.classList.remove('selected'));
+  div.classList.add('selected');
+  state.selectedChoice = origNum;
+  document.getElementById('submit-btn').disabled = false;
+}
+
+function submitAnswer() {
+  if (state.selectedChoice === null) return;
+  state.isAnswered = true;
+
+  const q = state.currentQuestion;
+  const isCorrect = q.correctAnswers.includes(state.selectedChoice);
+
+  // 選択肢の表示更新
+  document.querySelectorAll('.choice').forEach(c => {
+    const origIdx = parseInt(c.dataset.origIdx);
+    if (q.correctAnswers.includes(origIdx)) c.classList.add('correct');
+    else if (origIdx === state.selectedChoice) c.classList.add('incorrect');
+  });
+
+  // 結果バナー
+  const banner = document.getElementById('result-banner');
+  banner.style.display = 'block';
+  if (isCorrect) {
+    banner.className = 'result-banner correct';
+    banner.textContent = '◯ 正解!';
+  } else {
+    banner.className = 'result-banner incorrect';
+    banner.textContent = '✗ 不正解';
+  }
+
+  // 解説表示
+  const expDiv = document.getElementById('explanation-content');
+  if (q.explanation && q.explanation.trim()) {
+    expDiv.textContent = q.explanation;
+    expDiv.classList.remove('empty');
+  } else {
+    expDiv.innerHTML = '<span class="empty">解説は未入力です。後から追加できます。</span>';
+    expDiv.classList.add('empty');
+  }
+  document.getElementById('answer-area').classList.add('show');
+  document.getElementById('memo-card').style.display = 'block';
+
+  // ボタン切替
+  document.getElementById('action-buttons').style.display = 'none';
+  document.getElementById('next-btn').style.display = 'block';
+  showMuteBtn(q.id);
+
+  // 進捗保存(忘却曲線)
+  // skipProgressSave=trueの場合(AI作成問題の間違い直しなど)は保存しない
+  if (!state.skipProgressSave) {
+    saveProgress(q.id, isCorrect);
+  }
+}
+
+function skipAnswer() {
+  state.isAnswered = true;
+  state.selectedChoice = null;
+
+  const q = state.currentQuestion;
+
+  // 選択肢の表示更新(正解だけハイライト)
+  document.querySelectorAll('.choice').forEach(c => {
+    const origIdx = parseInt(c.dataset.origIdx);
+    if (q.correctAnswers.includes(origIdx)) c.classList.add('correct');
+  });
+
+  // 結果バナー(スキップ表示)
+  const banner = document.getElementById('result-banner');
+  banner.style.display = 'block';
+  banner.className = 'result-banner skipped';
+  banner.textContent = '⊘ スキップ';
+
+  // 解説表示
+  const expDiv = document.getElementById('explanation-content');
+  if (q.explanation && q.explanation.trim()) {
+    expDiv.textContent = q.explanation;
+    expDiv.classList.remove('empty');
+  } else {
+    expDiv.innerHTML = '<span class="empty">解説は未入力です。後から追加できます。</span>';
+    expDiv.classList.add('empty');
+  }
+  document.getElementById('answer-area').classList.add('show');
+  document.getElementById('memo-card').style.display = 'block';
+
+  // ボタン切替
+  document.getElementById('action-buttons').style.display = 'none';
+  document.getElementById('next-btn').style.display = 'block';
+  showMuteBtn(q.id);
+
+  // スキップは「不正解扱い」で進捗保存(翌日復習)
+  // skipProgressSave=trueの場合(AI作成問題の間違い直しなど)は保存しない
+  if (!state.skipProgressSave) {
+    saveProgress(q.id, false, true);
+  }
+}
+
+async function saveProgress(qid, isCorrect, isSkipped = false) {
+  const today = new Date();
+  const cur = state.progress[qid] || {
+    questionId: qid,
+    correctCount: 0,
+    incorrectCount: 0,
+    intervalLevel: 0,
+    lastResult: null,
+    lastAnsweredAt: null,
+    nextReviewAt: null
+  };
+
+  cur.lastAnsweredAt = today.toISOString();
+  cur.lastResult = isSkipped ? 'skipped' : (isCorrect ? 'correct' : 'incorrect');
+
+  const intervals = [2, 3, 7, 14, 30]; // 連続正解時の日数(レベル1→2日,2→3日,3→7日,4→14日,5→30日)
+  if (isCorrect) {
+    cur.correctCount++;
+    cur.intervalLevel = Math.min(cur.intervalLevel + 1, intervals.length);
+    const days = intervals[cur.intervalLevel - 1];
+    const next = new Date(today);
+    next.setDate(next.getDate() + days);
+    cur.nextReviewAt = next.toISOString().slice(0, 10);
+  } else {
+    cur.incorrectCount++;
+    cur.intervalLevel = 0;
+    const next = new Date(today);
+    // レベル0(初回不正解)は当日中に再出題 → nextReviewAt = 今日
+    cur.nextReviewAt = next.toISOString().slice(0, 10);
+  }
+
+  state.progress[qid] = cur;
+  await dbPut('progress', cur);
+}
+
+function nextQuestion() {
+  state.currentIndex++;
+  if (state.currentIndex >= state.questionQueue.length) {
+    showToast('すべての問題を完了しました!');
+    goHome();
+    return;
+  }
+  showQuestion();
+}
+
+async function saveMemo() {
+  if (!state.currentQuestion) return;
+  const text = document.getElementById('memo-area').value;
+  state.memos[state.currentQuestion.id] = text;
+  await dbPut('memos', { questionId: state.currentQuestion.id, text });
+  showToast('メモを保存しました');
+}
+
+//=========================================================
+// 出題除外（「今後出題しない」）機能
+//=========================================================
+const MUTED_SUBJECT = '出題しない問題';
+
+// AI作成問題かどうかの判定（yearが数値以外）
+function isAiQuestion(q) {
+  return !q || isNaN(Number(q.year));
+}
+
+function showMuteBtn(qid) {
+  const btn = document.getElementById('mute-btn');
+  if (!btn) return;
+  // 今日の演習・科目別演習のみ表示（本試験・復習モードは非表示）
+  const showModes = ['daily', 'subject', 'review', 'memo_review', 'muted_review', 'exam_review', 'search'];
+  if (!showModes.includes(state.currentMode)) {
+    btn.style.display = 'none';
+    return;
+  }
+  // AI作成問題は出題除外の対象外（本試験形式モード専用のため）
+  const qObj = state.currentQuestion;
+  if (qObj && qObj.id === qid && isAiQuestion(qObj)) {
+    btn.style.display = 'none';
+    return;
+  }
+  btn.style.display = 'block';
+  const isMuted = state.mutedQuestions && state.mutedQuestions[qid];
+  btn.textContent = isMuted ? '✅ 出題除外を解除' : '🚫 今後出題しない';
+  btn.classList.toggle('active', !!isMuted);
+}
+
+async function toggleMuteQuestion() {
+  const q = state.currentQuestion;
+  if (!q) return;
+  // AI作成問題は出題除外にできない
+  if (isAiQuestion(q)) {
+    showToast('AI作成問題は出題除外にできません');
+    return;
+  }
+  if (!state.mutedQuestions) state.mutedQuestions = {};
+
+  const isMuted = !!state.mutedQuestions[q.id];
+  if (isMuted) {
+    // 解除：元の科目に戻す
+    delete state.mutedQuestions[q.id];
+    await dbDelete('memos', '__muted__' + q.id).catch(() => {});
+    // IndexedDB の muted ストアから削除
+    await dbDelete('mutedQuestions', q.id).catch(() => {});
+    showToast('出題除外を解除しました');
+  } else {
+    // 除外設定
+    state.mutedQuestions[q.id] = { questionId: q.id, originalSubject: q.subject };
+    await dbPut('mutedQuestions', { questionId: q.id, originalSubject: q.subject });
+    showToast('「出題しない問題」に設定しました');
+  }
+
+  // ボタン表示更新
+  showMuteBtn(q.id);
+}
+
+function isMutedQuestion(q) {
+  return state.mutedQuestions && !!state.mutedQuestions[q.id];
+}
+
+//=========================================================
+// メモ・出題除外 一覧
+//=========================================================
+function buildQuestionListItem(id, showMemo, showMuted, onClickExtra) {
+  const masterById = {};
+  state.questions.forEach(q => { masterById[q.id] = q; });
+  const q = masterById[id];
+  const memo = state.memos[id] || '';
+  const isMuted = !!(state.mutedQuestions && state.mutedQuestions[id]);
+  const typeLabel = q ? (q.examType === 'amashi' ? 'あマ指' : 'はりきゅう') : '';
+  const yearLabel = q ? formatYearLabel(q.year) : '';
+  return `
+    <div onclick="${onClickExtra || ''}openMemoQuestion('${escapeHtml(id)}')" style="padding:12px;border-bottom:1px solid #eef4f8;cursor:pointer;transition:background 0.1s;" onmouseenter="this.style.background='#f5f7fa'" onmouseleave="this.style.background=''">
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center;">
+        ${showMuted && isMuted ? '<span style="font-size:11px;background:#ffc107;color:#212529;padding:2px 8px;border-radius:10px;font-weight:600;">🚫 出題除外</span>' : ''}
+        ${showMemo && memo ? '<span style="font-size:11px;background:#2c5f7c;color:white;padding:2px 8px;border-radius:10px;">📝 メモあり</span>' : ''}
+        ${q ? `<span style="font-size:11px;color:#7a8a99;">${escapeHtml(typeLabel)} ${escapeHtml(yearLabel)} 問${q.questionNo}</span>` : `<span style="font-size:11px;color:#7a8a99;">ID: ${escapeHtml(id)}</span>`}
+      </div>
+      <div style="font-size:13px;color:#2c3e50;line-height:1.5;margin-bottom:${memo && showMemo ? '6px' : '0'};">${q ? escapeHtml(q.questionText.slice(0, 60)) + (q.questionText.length > 60 ? '…' : '') : '（問題データなし）'}</div>
+      ${showMemo && memo ? `<div style="font-size:12px;color:#8b6914;background:#fffbf0;padding:6px 8px;border-radius:6px;border-left:3px solid #ffc107;">${escapeHtml(memo.slice(0, 80))}${memo.length > 80 ? '…' : ''}</div>` : ''}
+    </div>`;
+}
+
+function goMemoList() {
+  const masterById = {};
+  state.questions.forEach(q => { masterById[q.id] = q; });
+
+  const memoIds = Object.entries(state.memos)
+    .filter(([, text]) => text && text.trim())
+    .map(([id]) => id)
+    .filter(id => {
+      const q = masterById[id];
+      if (!q) return true; // 問題データ不明は表示しておく
+      if (isAiQuestion(q)) return false; // AI作成問題はメモ一覧に表示しない
+      return !isYearExcluded(q);
+    });
+
+  const container = document.getElementById('home-memo-list');
+  if (memoIds.length === 0) {
+    container.innerHTML = '<div style="color:#7a8a99;text-align:center;padding:20px 0;">メモはありません</div>';
+  } else {
+    container.innerHTML = memoIds.map(id => buildQuestionListItem(id, true, false, '')).join('');
+  }
+  showScreen('memo-list', 'メモ一覧', `${memoIds.length}件`);
+}
+
+function goMutedList() {
+  renderMutedList();
+  const mutedIds = Object.keys(state.mutedQuestions || {});
+  showScreen('muted-list', '出題除外一覧', `${mutedIds.length}件`);
+}
+
+function renderMutedList() {
+  const mutedIds = Object.keys(state.mutedQuestions || {});
+  const container = document.getElementById('home-muted-list');
+
+  const masterById = {};
+  state.questions.forEach(q => { masterById[q.id] = q; });
+
+  // 除外年度の問題を非表示
+  const visibleIds = mutedIds.filter(id => {
+    const q = masterById[id];
+    if (!q) return true;
+    return !isYearExcluded(q);
+  });
+
+  if (visibleIds.length === 0) {
+    container.innerHTML = '<div style="color:#7a8a99;text-align:center;padding:20px 0;">出題除外はありません</div>';
+    return;
+  }
+
+  let html = '';
+  for (const id of visibleIds) {
+    const q = masterById[id];
+    const typeLabel = q ? (q.examType === 'amashi' ? 'あマ指' : 'はりきゅう') : '';
+    const yearLabel = q ? formatYearLabel(q.year) : '';
+    const memo = state.memos[id] || '';
+    html += `
+      <div onclick="openMutedQuestion('${escapeHtml(id)}')" style="padding:12px;border-bottom:1px solid #eef4f8;cursor:pointer;transition:background 0.1s;" onmouseenter="this.style.background='#f5f7fa'" onmouseleave="this.style.background=''">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px;align-items:center;">
+          <span style="font-size:11px;background:#ffc107;color:#212529;padding:2px 8px;border-radius:10px;font-weight:600;">🚫 出題除外</span>
+          ${q ? `<span style="font-size:11px;color:#7a8a99;">${escapeHtml(typeLabel)} ${escapeHtml(yearLabel)} 問${q.questionNo}</span>` : `<span style="font-size:11px;color:#7a8a99;">ID: ${escapeHtml(id)}</span>`}
+        </div>
+        <div style="font-size:13px;color:#2c3e50;line-height:1.5;margin-bottom:${memo ? '6px' : '0'};">${q ? escapeHtml(q.questionText.slice(0, 60)) + (q.questionText.length > 60 ? '…' : '') : '（問題データなし）'}</div>
+        ${memo ? `<div style="font-size:12px;color:#8b6914;background:#fffbf0;padding:6px 8px;border-radius:6px;border-left:3px solid #ffc107;margin-bottom:0;">${escapeHtml(memo.slice(0, 80))}${memo.length > 80 ? '…' : ''}</div>` : ''}
+      </div>`;
+  }
+  container.innerHTML = html;
+}
+
+async function unmuteQuestion(qid) {
+  if (!state.mutedQuestions) return;
+  delete state.mutedQuestions[qid];
+  try { await dbDelete('mutedQuestions', qid); } catch(e) {}
+  showToast('出題除外を解除しました');
+  renderMutedList();
+  // 一覧件数を更新
+  const count = Object.keys(state.mutedQuestions || {}).length;
+  document.getElementById('screen-subtitle').textContent = `${count}件`;
+}
+
+async function renderMemoList() {
+  // 後方互換のため残す（goStats内から呼ばれる場合に備え空関数化）
+}
+
+function openMemoQuestion(qid) {
+  const masterById = {};
+  state.questions.forEach(q => { masterById[q.id] = q; });
+  const q = masterById[qid];
+  if (!q) { showToast('問題データが見つかりません'); return; }
+  state.questionQueue = [q];
+  state.currentIndex = 0;
+  state.currentMode = 'memo_review';
+  state.currentSubject = null;
+  state.skipProgressSave = true;
+  showQuestion();
+}
+
+function openMutedQuestion(qid) {
+  const masterById = {};
+  state.questions.forEach(q => { masterById[q.id] = q; });
+  const q = masterById[qid];
+  if (!q) { showToast('問題データが見つかりません'); return; }
+  state.questionQueue = [q];
+  state.currentIndex = 0;
+  state.currentMode = 'muted_review';
+  state.currentSubject = null;
+  state.skipProgressSave = true;
+  showQuestion();
+}
+
+//=========================================================
+// 設定
+//=========================================================
+async function updateSetting(key, value) {
+  state.settings[key] = value;
+  await dbPut('settings', { key, value });
+  if (key === 'examType') updateHomeStats();
+}
+
+//=========================================================
+// 初回セットアップ
+//=========================================================
+function getAvailableYears() {
+  // 通常問題（yearが数値）の年度一覧を試験種別ごとに取得
+  const yearSet = new Set();
+  state.questions.forEach(q => {
+    if (!isNaN(Number(q.year))) {
+      yearSet.add(JSON.stringify({ examType: q.examType, year: Number(q.year) }));
+    }
+  });
+  return Array.from(yearSet)
+    .map(s => JSON.parse(s))
+    .sort((a, b) => {
+      if (a.examType !== b.examType) return a.examType < b.examType ? -1 : 1;
+      return a.year - b.year;
+    });
+}
+
+function renderYearCheckList(containerId, excludeYears) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const years = getAvailableYears();
+  if (years.length === 0) {
+    container.innerHTML = '<div style="color:#7a8a99;text-align:center;padding:16px;">年度データがありません</div>';
+    return;
+  }
+  const typeLabels = { hari_kyu: 'はりきゅう', amashi: 'あマ指' };
+
+  // 試験種別ごとにグループ化
+  const groups = {};
+  years.forEach(({ examType, year }) => {
+    if (!groups[examType]) groups[examType] = [];
+    groups[examType].push(year);
+  });
+
+  let html = '';
+  Object.entries(groups).forEach(([examType, examYears]) => {
+    const label = typeLabels[examType] || examType;
+    const groupId = `year-group-${examType}-${containerId}`;
+
+    html += `
+      <div style="font-size:12px;color:#7a8a99;font-weight:700;letter-spacing:1px;margin:10px 0 6px;">━ ${label}</div>
+      <div id="${groupId}" style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">`;
+
+    examYears.forEach(year => {
+      const key = `${examType}_${year}`;
+      const checked = excludeYears.includes(key) ? 'checked' : '';
+      html += `
+        <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:${checked ? '#fdf0ee' : '#f5f7fa'};border:1px solid ${checked ? '#e8a090' : '#d4dde4'};border-radius:8px;cursor:pointer;font-size:13px;transition:all 0.15s;" id="year-label-${examType}-${year}">
+          <input type="checkbox" ${checked} data-year="${year}" data-examtype="${examType}"
+            style="width:18px;height:18px;accent-color:#c0504d;flex-shrink:0;"
+            onchange="onYearExcludeChange(this, '${containerId}')">
+          第${year}回
+        </label>`;
+    });
+
+    html += `</div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+function onYearExcludeChange(cb, containerId) {
+  // ラベルの色を動的に更新
+  const year = cb.dataset.year;
+  const examType = cb.dataset.examtype;
+  const lbl = document.getElementById(`year-label-${examType}-${year}`);
+  if (lbl) {
+    lbl.style.background = cb.checked ? '#fdf0ee' : '#f5f7fa';
+    lbl.style.borderColor = cb.checked ? '#e8a090' : '#d4dde4';
+  }
+  // 設定に即時保存（examType_year の複合キーで保存）
+  if (containerId === 'settings-year-list') {
+    const allCbs = document.querySelectorAll('#settings-year-list input[type="checkbox"]');
+    const excludeYears = [];
+    allCbs.forEach(c => { if (c.checked) excludeYears.push(`${c.dataset.examtype}_${c.dataset.year}`); });
+    updateSetting('excludeYears', excludeYears);
+    updateHomeStats();
+  }
+}
+
+function renderSettingsYearList() {
+  renderYearCheckList('settings-year-list', state.settings.excludeYears || []);
+}
+
+//=========================================================
+// データ管理
+//=========================================================
+function confirmReset() {
+  showModal('学習履歴をリセット', 'すべての学習履歴・メモが削除されます。問題データは保持されます。よろしいですか?', async () => {
+    await dbClear('progress');
+    await dbClear('memos');
+    state.progress = {};
+    state.memos = {};
+    showToast('リセットしました');
+    closeModal();
+    updateHomeStats();
+  });
+}
+
+
+//=========================================================
+// ユーティリティ
+//=========================================================
+function shuffleArray(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function formatYearLabel(year) {
+  // yearが数値の場合は「第〇〇回」、それ以外はそのまま表示
+  return isNaN(Number(year)) ? String(year) : `第${year}回`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  })[c]);
+}
+
+function showToast(msg, duration) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration || 2000);
+}
+
+function showModal(title, text, onConfirm) {
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-text').textContent = text;
+  document.getElementById('modal-confirm').onclick = onConfirm;
+  document.getElementById('modal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('show');
+}
+
+document.getElementById('modal').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+
+
+// （制作者署名・改変チェックは統合に伴い削除）
+
+
+
+// Service Worker 登録（PWA・オフライン対応）
+if ('serviceWorker' in navigator) {
+  // 新しいSWが制御を引き継いだら、手動更新時のみ一度だけリロード
+  let _swReloaded = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (_swReloaded) return;
+    if (sessionStorage.getItem('forceSwReload') === '1') {
+      _swReloaded = true;
+      sessionStorage.removeItem('forceSwReload');
+      window.location.reload();
+    }
+  });
+
+  // 自動の更新確認は行わない（データは取り込み済み・更新は統合ホームの「更新確認」で実施）。
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        // 新しいSWが待機中なら自動更新
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'activated') {
+              showToast('アプリを最新版に更新しました');
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('Service Worker登録失敗:', err));
+  });
+}
+
+// 起動
+init().catch(err => {
+  console.error(err);
+  alert('初期化エラー: ' + err.message);
+});
+</script>
+</body>
+</html>

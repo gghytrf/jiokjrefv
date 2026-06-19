@@ -1,0 +1,101 @@
+name: バージョン自動更新（日付）＆デプロイ
+
+# index.html・sw.js・各アプリ・manifest のいずれかが push されたら
+# version.json を「日付ベース」で自動更新し、GitHub Pages へデプロイする。
+#   バージョン例：2026.6.4
+#   （同じ日に複数回更新した場合のみ、確実にキャッシュを入れ替えるため
+#     末尾に内容ハッシュを付与：2026.6.4-a1b2c3d）
+
+on:
+  push:
+    branches: [ main, master ]
+    paths-ignore:
+      - 'version.json'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Node.js 20 廃止対応：まだ Node24 版が出ていない公式アクション
+# （configure-pages / deploy-pages 等）も Node24 で動かし、警告を解消する。
+# 2026/6/16 のデフォルト切替後も当面はこの指定で安定動作する。
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  bump-version:
+    runs-on: ubuntu-latest
+    # bot 自身のコミットでは実行しない（無限ループ防止）
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    steps:
+      - name: リポジトリを取得
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: version.json を日付で生成
+        run: |
+          set -e
+          # 東京時間の日付。先頭ゼロを除いた「2026.6.4」形式
+          Y=$(TZ=Asia/Tokyo date +'%Y')
+          M=$(TZ=Asia/Tokyo date +'%-m')
+          D=$(TZ=Asia/Tokyo date +'%-d')
+          DATE="${Y}.${M}.${D}"
+
+          # 現在の version.json の日付部分（ハッシュ除く）を取得
+          CUR=$(grep -oE '"version"[[:space:]]*:[[:space:]]*"[^"]+"' version.json | grep -oE '"[^"]+"$' | tr -d '"' || echo "")
+          CUR_DATE="${CUR%%-*}"
+
+          if [ "$CUR_DATE" = "$DATE" ]; then
+            # 同じ日の再更新 → 内容ハッシュを付けて必ず変化させる
+            HASH=$(cat index.html sw.js manifest.json manual.html apps/*/index.html apps/*/manual.html 2>/dev/null | sha256sum | cut -c1-7)
+            VERSION="${DATE}-${HASH}"
+          else
+            # 日付が変わった → シンプルに日付のみ
+            VERSION="${DATE}"
+          fi
+
+          printf '{\n  "version": "%s",\n  "note": "push 時に GitHub Actions が日付で自動生成"\n}\n' "$VERSION" > version.json
+          echo "生成したバージョン: ${VERSION}"
+
+      - name: 変更があればコミット
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet version.json; then
+            echo "version.json に変更なし。スキップします。"
+          else
+            git add version.json
+            git commit -m "chore: version.json を自動更新 [skip ci]"
+            git push
+          fi
+
+  deploy:
+    needs: bump-version
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 最新（バージョン更新後）を取得
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Pages 設定
+        uses: actions/configure-pages@v5
+
+      - name: アーティファクトをアップロード
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: '.'
+
+      - name: GitHub Pages へデプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4
