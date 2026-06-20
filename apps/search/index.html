@@ -346,11 +346,22 @@ footer .ver{opacity:.7}
 // 出典は取り込んだデータから自動生成する（13出典など可変）。初期は空。
 let SOURCES=[];
 // 出典ではない固定列（これら以外を「出典」とみなす）
+//  ※「検索キーワード（※検索緩和用　キーワード）」は出典チップの1つとして扱うため、ここには入れない。
 const NON_SOURCE_KEYS=new Set([
-  "経絡名","WHO表記","経穴名","ふりがな","取穴部位①","取穴部位②","取穴部位","検索キーワード",
+  "経絡名","WHO表記","経穴名","ふりがな","取穴部位①","取穴部位②","取穴部位",
   // 旧スキーマ互換
-  "meridian","who","name","reading","location","loc1","loc2","sources","keywords"
+  "meridian","who","name","reading","location","loc1","loc2","sources"
 ]);
+// 出典名の表示リネーム（短縮名 → 画面表示名）。
+//  CSVカラム「※検索緩和用　キーワード」は、チップ・結果とも「検索キーワード」と表示する。
+const SOURCE_RENAME={
+  "※検索緩和用　キーワード":"検索キーワード",
+  "※検索緩和用 キーワード":"検索キーワード", // 半角スペース版も許容
+  "検索キーワード":"検索キーワード"
+};
+function displaySourceName(shortName){
+  return SOURCE_RENAME[shortName] || shortName;
+}
 const POPULAR=["頭痛","腰痛","不眠","便秘","下痢","めまい","肩こり","咳嗽","喘息","胃痛","坐骨神経痛","耳鳴り","三叉神経痛","婦人病","リウマチ"];
 let DATA=[], terms=[], mode="and", srcOn=new Set();
 
@@ -358,13 +369,18 @@ const $=s=>document.querySelector(s);
 function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),1800);}
 
 // ---- データ正規化 ----
-//  CSV由来の日本語キーJSON（経絡名/WHO表記/経穴名/ふりがな/取穴部位①②/各出典名/検索キーワード）と、
-//  旧スキーマ（meridian/who/name/location/sources{…}）の両方を、共通の内部モデルに変換する。
-//  内部モデル: { meridian, who, name, reading, loc1, loc2, sources:{出典名:本文}, keywords }
+//  CSV由来の日本語キーJSON（経絡名/WHO表記/経穴名/ふりがな/取穴部位①②/各出典名・検索キーワード列）と、
+//  旧スキーマ（meridian/who/name/location/sources{…}/keywords）の両方を、共通の内部モデルに変換する。
+//  内部モデル: { meridian, who, name, reading, loc1, loc2, sources:{出典名:本文} }
+//  ※検索キーワードは sources の1項目（キー「検索キーワード」）として格納する。
 function normalizeRecord(r){
   if(!r || typeof r!=="object") return null;
   // 旧スキーマ（sources がオブジェクト）はそのまま活かしつつ欠損を補完
   if(r.sources && typeof r.sources==="object" && !Array.isArray(r.sources)){
+    const sources=Object.assign({}, r.sources);
+    // 旧スキーマの keywords / 検索キーワード も sources の1項目に取り込む
+    const kw=(r.keywords||r["検索キーワード"]||"").trim();
+    if(kw && !sources["検索キーワード"]) sources["検索キーワード"]=kw;
     return {
       meridian: r.meridian||r["経絡名"]||"",
       who:      r.who||r["WHO表記"]||"",
@@ -372,11 +388,11 @@ function normalizeRecord(r){
       reading:  r.reading||r["ふりがな"]||"",
       loc1:     r.loc1||r["取穴部位①"]||r.location||r["取穴部位"]||"",
       loc2:     r.loc2||r["取穴部位②"]||"",
-      sources:  r.sources,
-      keywords: r.keywords||r["検索キーワード"]||""
+      sources
     };
   }
   // 新スキーマ（各出典がトップレベル列）：固定列以外を出典として集める
+  //  「※検索緩和用　キーワード」列も出典の1つ（表示名「検索キーワード」）として取り込む。
   const sources={};
   for(const k of Object.keys(r)){
     if(NON_SOURCE_KEYS.has(k)) continue;
@@ -392,8 +408,7 @@ function normalizeRecord(r){
     reading:  r["ふりがな"]||r.reading||"",
     loc1:     r["取穴部位①"]||r.location||r["取穴部位"]||"",
     loc2:     r["取穴部位②"]||"",
-    sources,
-    keywords: r["検索キーワード"]||r.keywords||""
+    sources
   };
 }
 // 出典の長い列名（例「翁鍼灸治療院（Web)」「代田文誌（沢田健：鍼灸治療基礎学）」）から、
@@ -594,9 +609,13 @@ function renderTerms(){
   $("#terms").querySelectorAll("span[data-i]").forEach(e=>
     e.onclick=()=>{terms.splice(+e.dataset.i,1);renderTerms();run();saveState();});
 }
+function chipLabel(s){
+  // 検索キーワード列はリネーム名（検索キーワード）、それ以外は正式名（カラム名）を表示
+  return (SOURCE_RENAME[s]) ? SOURCE_RENAME[s] : fullSourceName(s);
+}
 function renderSrc(){
   $("#srcgrid").innerHTML=SOURCES.map(s=>
-    `<span class="chk ${srcOn.has(s)?"on":""}" data-s="${esc(s)}"><span class="chkbox">${srcOn.has(s)?"✓":""}</span><span class="chklbl">${esc(fullSourceName(s))}</span></span>`).join("");
+    `<span class="chk ${srcOn.has(s)?"on":""}" data-s="${esc(s)}"><span class="chkbox">${srcOn.has(s)?"✓":""}</span><span class="chklbl">${esc(chipLabel(s))}</span></span>`).join("");
   $("#srcgrid").querySelectorAll(".chk").forEach(e=>e.onclick=()=>{
     const s=e.dataset.s; if(srcOn.has(s)){if(srcOn.size>1)srcOn.delete(s);}else srcOn.add(s);
     renderSrc();run();saveState();
@@ -619,6 +638,7 @@ function run(){
   if(!terms.length){sum.style.display="none";res.innerHTML="";return;}
   const matches=[];
   for(const p of DATA){
+    // 検索対象＝選択中の出典のみ（検索キーワードもON時だけ対象）
     const active=Object.entries(p.sources).filter(([s])=>srcOn.has(s));
     if(!active.length)continue;
     const blob=active.map(([,v])=>v).join("　");
@@ -634,7 +654,7 @@ function run(){
   if(!matches.length){res.innerHTML='<div class="empty"><div class="big">該</div>該当する経穴が見つかりませんでした</div>';return;}
   res.innerHTML=matches.map(({p,hit,active})=>{
     const body=active.map(([s,v])=>
-      `<div class="src"><div class="sname">${esc(s)}</div><div class="stext">${hl(v,terms)}</div></div>`).join("");
+      `<div class="src"><div class="sname">${esc(displaySourceName(s))}</div><div class="stext">${hl(v,terms)}</div></div>`).join("");
     const badge=(mode==="or"&&terms.length>1)?`<span class="pt-badge">${hit}/${terms.length}</span>`:"";
     return `<div class="card"><div class="head">
         <span class="pt-who">${esc(p.who)}</span>
@@ -642,10 +662,7 @@ function run(){
         ${badge}<span class="pt-mer">${esc(p.meridian)}</span>
         <span class="arrow">▶</span>
       </div>
-      <div class="body">
-        ${locBlock(p)}
-        ${body}
-      </div></div>`;
+      <div class="body">${locBlock(p)}${body}</div></div>`;
   }).join("");
   res.querySelectorAll(".card .head").forEach(h=>h.onclick=()=>h.parentElement.classList.toggle("open"));
 }
@@ -714,7 +731,7 @@ function runRev(){
   if(!matches.length){res.innerHTML='<div class="empty"><div class="big">穴</div>該当する経穴が見つかりませんでした</div>';return;}
   res.innerHTML=matches.map(p=>{
     const body=Object.entries(p.sources||{}).map(([s,v])=>
-      `<div class="src"><div class="sname">${esc(s)}</div><div class="stext">${hl(v,q?[q]:[])}</div></div>`).join("");
+      `<div class="src"><div class="sname">${esc(displaySourceName(s))}</div><div class="stext">${hl(v,q?[q]:[])}</div></div>`).join("");
     const readHl = p.reading ? `<span class="rev-read">${hl(p.reading,q?[q]:[])}</span>` : "";
     return `<div class="card"><div class="head">
         <span class="rev-name">${hl(p.name||"",q?[q]:[])}</span>${readHl}
