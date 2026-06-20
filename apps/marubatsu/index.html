@@ -153,6 +153,13 @@
   .btn:disabled{ background:#aab5bf; cursor:not-allowed; }
   .btn.secondary{ background:#6c8499; }
   .btn.outline{ background:#fff; color:var(--main); border:2px solid var(--main); }
+  .btn.danger{ background:#c0504d; }
+  /* 国試学習アプリと揃えた設定行 */
+  .setting-row{ display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
+  .setting-row:last-child{ border-bottom:none; }
+  .setting-row .lbl{ font-size:calc(14px*var(--fs)); color:var(--ink); }
+  .setting-row .desc{ font-size:calc(11px*var(--fs)); color:var(--sub); margin-top:2px; }
+  .setting-row .btn{ flex:0 0 auto; padding:8px 14px; font-size:calc(13px*var(--fs)); }
 
   .progress-info{ background:#eef4f8; padding:10px 14px; border-radius:10px; margin-bottom:14px; font-size:calc(13px*var(--fs)); color:var(--main); text-align:center; font-weight:500; }
   .bar{ height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin-top:8px; }
@@ -326,22 +333,25 @@
   <div id="settings" class="screen">
     <div class="card">
       <h2>問題データ</h2>
-      <div id="mb-data-info" style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:12px;">問題データ: —</div>
-      <button class="menu-btn" onclick="mbReimport()"><span class="ico">📥</span><span class="label">問題データを取り込む / 更新する</span>
-        <div class="desc">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div></button>
+      <div id="mb-data-info" style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;">問題データ: —</div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">問題データを取り込む / 更新する</div>
+          <div class="desc">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div>
+        </div>
+        <button class="btn" onclick="mbReimport()">📥 取り込み</button>
+      </div>
     </div>
     <div class="card">
       <h2>学習履歴の管理</h2>
-      <div style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:12px;">学習履歴（忘却曲線・解答記録）は、この端末内に保存されています。バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>
-      <button class="menu-btn" onclick="resetProgress()"><span class="ico">🗑️</span><span class="label">学習履歴をリセット</span>
-        <div class="desc">解答記録・忘却曲線をすべて消去（元に戻せません）</div></button>
-    </div>
-    <div class="card">
-      <h2>ℹ️ アプリ情報</h2>
-      <div style="padding:6px 2px;font-size:calc(13px*var(--fs));line-height:2;color:var(--sub);">
-        <div>あん摩マッサージ指圧師・はり師きゅう師 国家試験 〇×問題集</div>
-        <div>バージョン情報・更新は統合ホーム画面で管理されます。</div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">学習履歴をリセット</div>
+          <div class="desc">問題データは保持されます</div>
+        </div>
+        <button class="btn danger" onclick="resetProgress()">🗑️ 削除</button>
       </div>
+      <div style="font-size:calc(12px*var(--fs));color:var(--sub);margin-top:10px;line-height:1.7;">バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>
     </div>
   </div>
 
@@ -376,6 +386,7 @@
 
 /* ====== 状態 ====== */
 let ALL = [];               // 全問題
+let MB_DATA_VERSION = null;  // 取り込んだ問題データのバージョン
 let YEAR_LABELS = {};       // year値 → 表示ラベル
 let PROGRESS = {};          // questionId -> {questionId,correctCount,incorrectCount,intervalLevel,lastResult,lastAnsweredAt,nextReviewAt}
 let dailyCount = 20;        // 今日の演習の問題数
@@ -480,6 +491,7 @@ async function mbLoadQuestions(){
     const rec = await mbGet('questionData', 'current');
     if(rec && Array.isArray(rec.questions) && rec.questions.length>0){
       ALL = rec.questions;
+      MB_DATA_VERSION = rec.version || null;
       return true;
     }
     return false;
@@ -499,8 +511,9 @@ function mbImportFile(ev){
         alert('問題データが見つかりませんでした。\nmarubatsu_questions.json を選択してください。');
         return;
       }
-      await mbPut('questionData', { key:'current', questions:arr, importedAt:new Date().toISOString() });
+      await mbPut('questionData', { key:'current', questions:arr, version:(json && json.version) || null, importedAt:new Date().toISOString() });
       ALL = arr;
+      MB_DATA_VERSION = (json && json.version) || null;
       mbHideImportPrompt();
       buildFilters();
       refreshHome();
@@ -603,7 +616,7 @@ function openStats(){ refreshStats(); showScreen('stats'); }
 function openSettings(){
   showScreen('settings');
   const el = document.getElementById('mb-data-info');
-  if(el) el.textContent = '問題データ: ' + (ALL && ALL.length ? (ALL.length + '問（取り込み済み）') : '未取り込み');
+  if(el) el.textContent = '問題データ: ' + (ALL && ALL.length ? ('ver.' + (MB_DATA_VERSION || '—') + '（' + ALL.length + '問）') : '未取り込み');
 }
 function goSubjectSelect(){ showScreen('subjects'); }
 
