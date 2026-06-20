@@ -109,6 +109,29 @@
   label.chk:hover{border-color:var(--accent2)}
   label.chk input{margin-top:3px;accent-color:var(--accent)}
   label.chk.on{background:var(--hi);border-color:var(--accent)}
+  /* 主訴・随伴の入力候補（オートコンプリート） */
+  .free{position:relative}
+  .ac-box{position:absolute;left:0;right:0;z-index:30;margin-top:2px;background:#fff;
+    border:1px solid var(--accent);border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.13);
+    max-height:240px;overflow-y:auto;padding:4px}
+  .ac-item{display:flex;align-items:baseline;gap:8px;padding:8px 10px;border-radius:7px;cursor:pointer;font-size:.86rem}
+  .ac-item:hover,.ac-item.sel{background:var(--hi)}
+  .ac-kw{font-weight:700;color:var(--ink,#222)}
+  .ac-kw mark{background:#ffe9a8;color:inherit;padding:0 1px;border-radius:2px}
+  .ac-sym{font-size:.76rem;color:var(--accent)}
+  .ac-sym::before{content:"→ ";color:var(--sub,#999)}
+  .ac-empty{padding:9px 10px;font-size:.8rem;color:var(--sub,#999)}
+  /* 優先症状（主訴・随伴から自動ピックアップ）の強調 */
+  label.chk.is-pri{border-color:var(--accent);box-shadow:0 0 0 2px var(--hi) inset}
+  .pri-pill{display:inline-block;font-size:.66rem;font-weight:700;color:#fff;background:var(--accent);
+    border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:middle;letter-spacing:.04em}
+  .pri-banner{margin:0 0 14px;padding:13px 15px;border:1px solid var(--accent);border-radius:11px;
+    background:var(--hi)}
+  .pri-banner .pri-title{font-weight:700;font-size:.92rem;margin-bottom:5px}
+  .pri-banner .pri-sub{font-size:.78rem;color:var(--ink-soft,#666);line-height:1.7;margin-bottom:9px}
+  .pri-banner .pri-list{display:flex;flex-wrap:wrap;gap:6px}
+  .pri-banner .pri-chip{font-size:.78rem;background:#fff;border:1px solid var(--accent);
+    color:var(--accent);border-radius:7px;padding:4px 9px}
   .free{margin:14px 0 4px}
   .free textarea{width:100%;min-height:70px;border:1px solid var(--line);border-radius:9px;
     padding:10px;font-size:.86rem;font-family:inherit;resize:vertical;background:#fff}
@@ -323,14 +346,16 @@
   <p id="matchInfo" class="h2sub" style="margin:0 0 6px;min-height:1em"></p>
   <div class="free">
     <div class="gh" style="font-weight:700;margin-bottom:6px">主訴（一番つらい症状）</div>
-    <textarea id="q_chief" placeholder="例：1週間前から右の腰が痛い。前かがみで悪化する。"></textarea>
+    <textarea id="q_chief" placeholder="例：1週間前から右の腰が痛い。前かがみで悪化する。" autocomplete="off"></textarea>
+    <div class="ac-box" id="ac_chief" style="display:none"></div>
   </div>
   <div class="free">
     <div class="gh" style="font-weight:700;margin:14px 0 6px">経過・きっかけ・随伴症状</div>
-    <textarea id="q_hist" placeholder="例：冷えると悪化、疲れやすい、食欲不振、夜間の頻尿あり など"></textarea>
+    <textarea id="q_hist" placeholder="例：冷えると悪化、疲れやすい、食欲不振、夜間の頻尿あり など" autocomplete="off"></textarea>
+    <div class="ac-box" id="ac_hist" style="display:none"></div>
   </div>
   <div class="bar">
-    <button class="btn-primary" onclick="go('symptom')">症状入力へ →</button>
+    <button class="btn-primary" onclick="go('symptom'); applyPriorityFromIntake();">症状入力へ →</button>
     <button class="btn-ghost" onclick="newChart()">新規カルテ（入力クリア）</button>
     <button class="btn-ghost" onclick="printIntakeForm()">🖨 患者用問診表を印刷/PDF</button>
     <button class="btn-ghost" onclick="openHelp()">📖 使い方</button>
@@ -342,6 +367,7 @@
 <section id="sec1" data-name="symptom">
   <h2>② 症状入力</h2>
   <p class="h2sub">該当する症状にチェックしてください。チェックが多いほど精度が上がります。痛みの部位を選ぶと、次の徒手検査でテストが提示されます。</p>
+  <div id="priorityBanner" class="pri-banner" style="display:none"></div>
   <div id="symptomArea"></div>
   <div class="bar">
     <button class="btn-primary" onclick="toTests()">徒手検査へ →</button>
@@ -1492,12 +1518,243 @@ function saveAll(data){
 /* ============================================================
    画面描画
    ============================================================ */
+/* ============================================================
+   主訴・随伴症状の文章から「優先して聞くべき症状」を拾う仕組み
+   ・アプリ内のキーワード辞書でオフライン判定（通信不要）。
+   ・主訴(q_chief)＋経過・随伴(q_hist)のテキストを走査し、
+     一致した症状キーを「優先（聞くべき）」として症状入力に反映。
+   ============================================================ */
+const SYMPTOM_KEYWORDS = {
+  cold:["冷え","冷える","寒がり","寒気","さむけ","冷たい","ひえ","手足が冷"],
+  heat:["ほてり","のぼせ","のぼせる","熱感","ほてる","顔がほてる"],
+  fatigue:["疲れ","だるい","倦怠","疲労","気力がない","しんどい","疲れやすい"],
+  lowvoice:["声に力","声が小さ","話すのが億劫","声が出","しゃべるのがおっくう"],
+  fever_pm:["微熱","夕方になると熱","夜に熱","夜間の熱"],
+  sweat_spont:["汗が出","自汗","じっとしても汗","動くと汗"],
+  sweat_night:["寝汗","盗汗","寝ている間に汗","就寝中の汗"],
+  thirst_cold:["口が渇","のどが渇","口渇","冷たい物が欲","冷たい飲み物"],
+  nothirst:["渇かない","のどは渇かない","温かい物を好","温かい飲み物"],
+  heavy:["重だるい","体が重","だるおも","重い感じ"],
+  insomnia:["寝つけない","眠れない","不眠","眠りが浅","入眠","中途覚醒","目が覚める"],
+  dream:["夢が多","夢をよくみ","悪夢"],
+  palpitation:["動悸","胸がドキドキ","心臓がドキ"],
+  anxiety:["不安","驚きやすい","びくびく","心配","落ち着かない"],
+  irritable:["イライラ","怒りっぽい","いらいら","気が短","ストレス"],
+  depress:["落ち込","ため息","気分が沈","憂うつ","ゆううつ","やる気が出ない"],
+  dizziness:["めまい","立ちくらみ","ふらつき","くらくら","目まい"],
+  forget:["物忘れ","忘れっぽい","記憶力","もの忘れ"],
+  headache:["頭痛","頭が痛","あたまが痛"],
+  eye_dry:["目の乾","目がかすむ","目のかすみ","ドライアイ","かすみ目"],
+  eye_red:["目の充血","目が赤","充血"],
+  facepale:["顔色が白","顔色が悪","顔につやがない","青白い"],
+  facered:["顔が赤","赤ら顔"],
+  tinnitus:["耳鳴り","みみなり","耳鳴"],
+  appetite_lo:["食欲不振","食欲がない","食欲が落ち","食べられない","食欲低下"],
+  bloat:["お腹の張り","腹が張","ゲップ","げっぷ","膨満","お腹が張"],
+  loose:["軟便","下痢","便がゆるい","お腹を下","ゆるい便"],
+  constip:["便秘","便が出ない","お通じが悪","排便が"],
+  nausea:["吐き気","むかつき","気持ち悪","嘔吐","おう吐","ムカムカ"],
+  epi_cold:["温めると楽","お腹を温める","みぞおち","温めると痛みが和"],
+  sticky_mouth:["口の中が粘","口が粘","口が甘","ねばつく"],
+  adds_x8:["空腹感が強","すぐお腹がすく","消穀善飢","食べてもすぐ空腹"],
+  cough:["咳","せき","咳が出","せきが出"],
+  phlegm:["痰","たんが","痰が多","たんがからむ"],
+  sob:["息切れ","呼吸が浅","息が浅","息苦し","呼吸が苦"],
+  chest_op:["胸が詰ま","脇が張","胸苦し","胸のつかえ","脇の張り"],
+  urine_freq:["頻尿","夜間尿","トイレが近","夜中にトイレ","おしっこが近"],
+  urine_clear:["尿が薄","尿の量が多","薄い尿"],
+  urine_yellow:["尿が濃","尿が少な","残尿","濃い尿","排尿"],
+  lowback_weak:["腰がだるい","膝がだるい","腰や膝","力が入らない","腰膝","腰がだる"],
+  lowback_cold:["腰が冷え","腰の冷え","腰を温めると"],
+  libido_lo:["性欲","むくみ","浮腫","下肢のむくみ"],
+  blood_dark:["経血","あざ","暗紫","血の塊","レバー状"],
+  fixed_pain:["刺すような","固定痛","ずっと同じ場所が痛","刺すような痛"],
+  dysmen:["生理痛","月経痛","生理が痛"],
+  palered:["唇が白","爪が白","唇の色が薄"],
+  skin_dry:["肌が乾","髪が乾","乾燥","つやがない","かさかさ"],
+  tongue_pale:["舌が淡","舌の色が薄"],
+  tongue_red:["舌が赤"],
+  tongue_purple:["舌が暗","瘀点","舌が紫"],
+  coat_yellow:["黄色い苔","黄苔"],
+  coat_thick:["苔が厚","厚い苔","べたつく苔"],
+  coat_none:["苔がない","苔が少な"],
+  pain_neck:["首が痛","首のしびれ","頸が痛","首こり","くびが痛","頸部"],
+  pain_shoulder:["肩が痛","肩関節","肩が上がらない","挙上","四十肩","五十肩","肩こり"],
+  pain_elbow:["肘が痛","ひじが痛","テニス肘","肘の痛"],
+  pain_wrist:["手首が痛","手指","手のしびれ","指が痛","手首の痛","手がしびれ"],
+  pain_tos:["腕がしびれ","手がだる","胸郭出口","腕のしびれ"],
+  pain_thorax:["胸が痛","肋骨","背中が痛","背部","肋間"],
+  pain_lowback:["腰が痛","腰痛","こしが痛"],
+  pain_si:["仙腸","殿部","お尻が痛","臀部"],
+  pain_hip:["股関節","鼡径","そけい","股が痛"],
+  pain_knee:["膝が痛","ひざが痛","膝の痛"],
+  pain_ankle:["足首が痛","足が痛","足部","くるぶし"],
+  pain_leg_numb:["下肢のしびれ","足がしびれ","放散痛","脚がしびれ","坐骨"],
+};
+// 現在の優先症状キー集合（buildSymptomsで参照）
+let PRIORITY_KEYS = new Set();
+
+/* ====== 主訴・随伴の入力候補（オートコンプリート）======
+   入力中の語（区切り直後の文字列）に、辞書キーワードを部分一致させて
+   「キーワード → 対応症状」を候補表示。タップでその語を挿入する。 */
+// 辞書を {kw, key, label} のフラット配列に展開（初回1回）
+let AC_INDEX = null;
+function buildAcIndex(){
+  if(AC_INDEX) return AC_INDEX;
+  AC_INDEX = [];
+  for(const [key, words] of Object.entries(SYMPTOM_KEYWORDS)){
+    const label = (typeof LABELMAP!=='undefined' && LABELMAP[key]) ? LABELMAP[key] : key;
+    for(const w of words){ AC_INDEX.push({kw:w, key, label}); }
+  }
+  return AC_INDEX;
+}
+// 区切り（空白・読点・句点・改行・中黒・カンマ）で入力中の語を切り出す
+const AC_SEP = /[\s、。,，・\n\r]/;
+function acCurrentSegment(textarea){
+  const pos = textarea.selectionStart ?? textarea.value.length;
+  const before = textarea.value.slice(0, pos);
+  // 最後の区切り以降を「入力中の語」とする
+  let start = 0;
+  for(let i=before.length-1; i>=0; i--){
+    if(AC_SEP.test(before[i])){ start = i+1; break; }
+  }
+  return { seg: before.slice(start), start, pos };
+}
+function acSearch(seg){
+  if(!seg) return [];
+  buildAcIndex();
+  const seen = new Set(), out = [];
+  for(const e of AC_INDEX){
+    if(e.kw.includes(seg)){
+      const id = e.kw+'|'+e.key;
+      if(seen.has(id)) continue;
+      seen.add(id);
+      out.push(e);
+      if(out.length>=12) break; // 出しすぎ防止
+    }
+  }
+  // 前方一致を上に（「夢を」→「夢を多」のように頭から一致するものを優先）
+  out.sort((a,b)=>{
+    const pa=a.kw.startsWith(seg)?0:1, pb=b.kw.startsWith(seg)?0:1;
+    if(pa!==pb) return pa-pb;
+    return a.kw.length-b.kw.length;
+  });
+  return out;
+}
+function acEsc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function acHi(kw, seg){
+  const i = kw.indexOf(seg);
+  if(i<0) return acEsc(kw);
+  return acEsc(kw.slice(0,i))+'<mark>'+acEsc(kw.slice(i,i+seg.length))+'</mark>'+acEsc(kw.slice(i+seg.length));
+}
+let AC_ACTIVE = null;   // 現在候補を出している textarea のid
+function acRender(taId, boxId){
+  const ta = document.getElementById(taId), box = document.getElementById(boxId);
+  if(!ta||!box) return;
+  const {seg} = acCurrentSegment(ta);
+  if(seg.length < 1){ box.style.display='none'; box.innerHTML=''; AC_ACTIVE=null; return; }
+  const list = acSearch(seg);
+  if(list.length===0){ box.style.display='none'; box.innerHTML=''; AC_ACTIVE=null; return; }
+  box.innerHTML = list.map((e,i)=>
+    `<div class="ac-item" data-kw="${acEsc(e.kw)}" data-ta="${taId}">`
+    + `<span class="ac-kw">${acHi(e.kw,seg)}</span>`
+    + `<span class="ac-sym">${acEsc(e.label)}</span></div>`
+  ).join('');
+  // テキストエリア直下に配置（.free 基準のabsolute）
+  box.style.top = (ta.offsetTop + ta.offsetHeight + 2) + 'px';
+  box.style.display='block';
+  AC_ACTIVE = taId;
+  // クリックで挿入
+  box.querySelectorAll('.ac-item').forEach(el=>{
+    el.addEventListener('mousedown', ev=>{ // mousedownでblurより先に処理
+      ev.preventDefault();
+      acInsert(taId, boxId, el.dataset.kw);
+    });
+  });
+}
+// 入力中の語を、選んだキーワードで置き換える（挿入）
+function acInsert(taId, boxId, kw){
+  const ta = document.getElementById(taId), box = document.getElementById(boxId);
+  if(!ta) return;
+  const {start, pos} = acCurrentSegment(ta);
+  const v = ta.value;
+  ta.value = v.slice(0, start) + kw + v.slice(pos);
+  // カーソルを挿入語の直後へ
+  const caret = start + kw.length;
+  ta.focus();
+  ta.setSelectionRange(caret, caret);
+  if(box){ box.style.display='none'; box.innerHTML=''; }
+  AC_ACTIVE=null;
+}
+function acHide(boxId){
+  const box=document.getElementById(boxId);
+  if(box){ box.style.display='none'; box.innerHTML=''; }
+}
+// 入力欄に候補機能を結びつける
+function setupAutocomplete(){
+  const pairs = [['q_chief','ac_chief'], ['q_hist','ac_hist']];
+  pairs.forEach(([taId, boxId])=>{
+    const ta=document.getElementById(taId);
+    if(!ta) return;
+    ta.addEventListener('input', ()=>acRender(taId, boxId));
+    ta.addEventListener('click', ()=>acRender(taId, boxId));
+    ta.addEventListener('keyup', e=>{ if(['ArrowLeft','ArrowRight','Home','End'].includes(e.key)) acRender(taId, boxId); });
+    // フォーカスが外れたら閉じる（候補クリックは mousedown で先に処理済み）
+    ta.addEventListener('blur', ()=> setTimeout(()=>acHide(boxId), 120));
+    ta.addEventListener('keydown', e=>{ if(e.key==='Escape') acHide(boxId); });
+  });
+}
+
+// 主訴＋随伴のテキストから優先症状キーを抽出する
+function extractPrioritySymptoms(){
+  const chief = (document.getElementById('q_chief')?.value || '');
+  const hist  = (document.getElementById('q_hist')?.value || '');
+  const text = (chief + ' ' + hist);
+  if(!text.trim()) return new Set();
+  const hits = new Set();
+  for(const [key, words] of Object.entries(SYMPTOM_KEYWORDS)){
+    if(isHidden('symptom', key)) continue; // 非表示症状は対象外
+    if(words.some(w => text.includes(w))) hits.add(key);
+  }
+  return hits;
+}
+
+// 問診から症状入力へ進むときに呼ぶ：抽出→自動チェック反映→画面再描画
+function applyPriorityFromIntake(){
+  PRIORITY_KEYS = extractPrioritySymptoms();
+  buildSymptoms();          // 優先表示＋自動チェックを反映して描画
+  renderPriorityBanner();
+}
+
+// 優先症状バナーを描画
+function renderPriorityBanner(){
+  const el = document.getElementById('priorityBanner');
+  if(!el) return;
+  if(PRIORITY_KEYS.size === 0){ el.style.display='none'; el.innerHTML=''; return; }
+  const labels = [...PRIORITY_KEYS].map(k=>LABELMAP[k]).filter(Boolean);
+  el.style.display='block';
+  el.innerHTML = `<div class="pri-title">📝 主訴・随伴症状から、優先して確認したい項目（${labels.length}件）</div>`
+    + `<div class="pri-sub">下の各グループの先頭に <span class="pri-pill">優先</span> 付きで表示し、自動でチェックしています。問診で実際に確認し、違うものはチェックを外してください。</div>`
+    + `<div class="pri-list">${labels.map(l=>`<span class="pri-chip">${esc(l)}</span>`).join('')}</div>`;
+}
+
 function buildSymptoms(){
   const area=document.getElementById('symptomArea');
+  // 既存のチェック状態を保持（再描画時に消えないように）
+  const prevChecked = new Set(getChecked());
   area.innerHTML=SYMPTOM_GROUPS.map(grp=>{
-    const items=grp.items.filter(([k,l])=>!isHidden('symptom',k)).map(([k,l])=>
-      `<label class="chk"><input type="checkbox" value="${k}" onchange="this.closest('label').classList.toggle('on',this.checked)"><span>${l}</span></label>`
-    ).join('');
+    // グループ内で「優先」を先頭へ並べ替え
+    const visible = grp.items.filter(([k,l])=>!isHidden('symptom',k));
+    const ordered = [...visible].sort((a,b)=>{
+      const pa = PRIORITY_KEYS.has(a[0])?0:1, pb = PRIORITY_KEYS.has(b[0])?0:1;
+      return pa-pb;
+    });
+    const items = ordered.map(([k,l])=>{
+      const isPri = PRIORITY_KEYS.has(k);
+      // 優先項目は自動チェック。それ以外は従来のチェック状態を維持。
+      const checked = isPri || prevChecked.has(k);
+      return `<label class="chk${isPri?' is-pri':''}${checked?' on':''}"><input type="checkbox" value="${k}" ${checked?'checked':''} onchange="this.closest('label').classList.toggle('on',this.checked)"><span>${isPri?'<span class="pri-pill">優先</span>':''}${l}</span></label>`;
+    }).join('');
     if(!items) return '';
     return `<div class="grp"><div class="gh">${grp.g}</div><div class="qs">${items}</div></div>`;
   }).join('');
@@ -1629,7 +1886,13 @@ function buildFuncTests(){
   }).join('');
 }
 
-function clearAll(){document.querySelectorAll('#symptomArea input:checked').forEach(i=>{i.checked=false;i.closest('label').classList.remove('on');});}
+function clearAll(){
+  PRIORITY_KEYS = new Set();
+  // 全チェックを外す
+  document.querySelectorAll('#symptomArea input:checked').forEach(i=>{i.checked=false;i.closest('label').classList.remove('on');});
+  renderPriorityBanner();
+  buildSymptoms(); // 優先の並べ替え・バッジを解除して再描画（この時点でチェックは無い）
+}
 
 function newChart(){
   ['p_id','p_name','p_resv','p_arr','q_chief','q_hist','q_tx','q_after','q_memo'].forEach(id=>document.getElementById(id).value='');
@@ -2130,6 +2393,11 @@ function go(target){
   document.querySelectorAll('section').forEach(s=>s.classList.toggle('show',s.dataset.name===name));
   if(name==='chart')renderCharts();
   if(name==='intake')refreshDatalists();
+  if(name==='symptom' && PRIORITY_KEYS.size===0){
+    // 症状タブを初めて開いたとき、問診に入力があれば優先症状を反映
+    const hasText = ((document.getElementById('q_chief')?.value||'') + (document.getElementById('q_hist')?.value||'')).trim();
+    if(hasText) applyPriorityFromIntake();
+  }
   window.scrollTo({top:0,behavior:'smooth'});
 }
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>go(t.dataset.name)));
@@ -2143,6 +2411,7 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeHelp();});
 
 buildSymptoms();
 buildFuncTests();
+setupAutocomplete();
 document.getElementById('p_date').value=new Date().toISOString().slice(0,10);
 refreshDatalists();
 

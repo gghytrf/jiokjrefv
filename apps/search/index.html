@@ -87,8 +87,11 @@ header{
   background:linear-gradient(180deg,#2b2320,#3a302a);color:#f4efe6;
   padding:14px 18px 12px;box-shadow:0 2px 12px rgba(0,0,0,.18);
 }
-header .bar{display:flex;align-items:center;gap:10px}
-header .bar .txt{flex:1;min-width:0}
+header .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+header .bar .txt{flex:1 1 100%;min-width:0}
+@media (min-width:560px){ header .bar .txt{flex:1 1 auto} }
+/* 狭い画面では操作ボタン群を詰めて配置 */
+header .bar > button, header .bar .fs-ctrl{flex:0 0 auto}
 /* 文字サイズ調整 */
 .fs-ctrl{flex-shrink:0;display:inline-flex;align-items:center;gap:5px}
 .fs-ctrl button{width:30px;height:30px;border:1px solid rgba(232,201,140,.45);background:rgba(255,255,255,.10);
@@ -244,6 +247,7 @@ footer .ver{opacity:.7}
       <span class="fs-label" id="fsLabel">標準</span>
       <button class="fs-plus" id="fsPlus" title="文字を大きく" aria-label="文字を大きく">A＋</button>
     </div>
+    <button id="acu-import" title="経穴データを取り込む / 更新する" style="border:1px solid var(--line,#d8cdb6);background:transparent;color:inherit;border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;white-space:nowrap">📥 データ取り込み</button>
     <button onclick="window.open('./manual.html','_blank')" style="border:1px solid var(--line,#d8cdb6);background:transparent;color:inherit;border-radius:8px;padding:7px 11px;font-size:12px;cursor:pointer;white-space:nowrap">📖 使用説明書</button>
   </div>
 </header>
@@ -318,8 +322,7 @@ footer .ver{opacity:.7}
 
 <footer>
   鍼灸経穴データベース ／ 各家の主治症より<br>
-  <span class="ver" id="ver">データはお使いの端末内に保存されます</span><br>
-  <button id="acu-import" style="margin-top:8px;border:1px solid var(--line,#d8cdb6);background:transparent;color:inherit;border-radius:8px;padding:7px 14px;font-size:12px;cursor:pointer">📥 経穴データを取り込む / 更新する</button>
+  <span class="ver" id="ver">データはお使いの端末内に保存されます</span>
 </footer>
 
 <div id="toast"></div>
@@ -767,7 +770,7 @@ $("#modetab").querySelectorAll("button").forEach(b=>b.onclick=()=>{
   if(pane==="rev" && !$("#mergrid").children.length) renderMer();
 });
 
-// 取り込みボタン（フッターに追加）：ファイル選択でデータを取り込む
+// 取り込みボタン（ヘッダーに配置）：ファイル選択でデータを取り込む
 const _impBtn=$("#acu-import");
 if(_impBtn) _impBtn.onclick=triggerAcuImport;
 
