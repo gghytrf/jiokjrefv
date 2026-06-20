@@ -118,6 +118,7 @@
 
   /* ===== ストレッチ/セルフケア ===== */
   .care-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:0.75rem; margin-bottom:1.5rem; }
+  .acu-section-label { margin-top:2.2rem; padding-top:1.4rem; border-top:1px solid var(--border); }
   .care-card { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:1.1rem; cursor:pointer; text-align:left; transition:all 0.15s; position:relative; overflow:hidden; }
   .care-card::after { content:''; position:absolute; right:-20px; top:-20px; width:60px; height:60px; border-radius:50%; background:var(--accent); opacity:0.06; transition:opacity 0.2s; }
   .care-card:hover { border-color:var(--accent); transform:translateY(-2px); }
@@ -170,6 +171,9 @@
   .form-points ul { list-style:none; padding:0; margin:0; }
   .form-points li { font-size:0.78rem; color:#cfcfcf; padding:0.18rem 0 0.18rem 1.1rem; position:relative; line-height:1.55; }
   .form-points li::before { content:'▸'; position:absolute; left:0; color:var(--accent); }
+  /* ツボの場所ハイライト */
+  .acu-loc { background:#1a1400; border:1px solid #4a3a0a; border-left:3px solid var(--accent); border-radius:5px; padding:0.7rem 0.9rem; margin-bottom:0.7rem; font-size:0.82rem; color:#e8e0c8; line-height:1.65; }
+  .acu-loc-title { display:block; color:var(--accent); font-size:0.74rem; font-weight:700; letter-spacing:0.05em; margin-bottom:0.3rem; }
 
   .to-workout-btn { margin-top:0.9rem; width:100%; padding:0.65rem; background:#0a0a0a; border:1px solid var(--accent); color:var(--accent); border-radius:4px; cursor:pointer; font-family:'Noto Sans JP',sans-serif; font-size:0.82rem; font-weight:700; transition:all 0.15s; }
   .to-workout-btn:hover { background:var(--accent); color:#000; }
@@ -250,6 +254,22 @@
   .mode-opt.selected .mo-name .mo-radio { border-color:var(--accent); }
   .mode-opt.selected .mo-name .mo-radio::after { content:''; position:absolute; inset:3px; border-radius:50%; background:var(--accent); }
   .mode-opt .mo-desc { font-size:0.74rem; color:var(--muted); margin-top:0.4rem; line-height:1.6; padding-left:1.5rem; }
+  /* 変動式：休憩時間の選択 */
+  .hidden { display:none !important; }
+  .var-rest { background:#0d0f00; border:1px solid #33370a; border-radius:6px; padding:0.85rem 1rem; margin:0.2rem 0 0.55rem; }
+  .var-rest .vr-group { margin-bottom:0.7rem; }
+  .var-rest .vr-group:last-child { margin-bottom:0; }
+  .var-rest .vr-label { font-size:0.72rem; color:var(--accent); font-weight:700; letter-spacing:0.05em; margin-bottom:0.4rem; }
+  .var-rest .vr-opts { display:flex; flex-wrap:wrap; gap:0.4rem; }
+  .var-rest .vr-btn { background:#0a0a0a; border:1px solid var(--border); color:var(--muted); border-radius:5px; padding:0.4rem 0.7rem; font-size:0.76rem; cursor:pointer; font-family:'Noto Sans JP',sans-serif; transition:all 0.15s; }
+  .var-rest .vr-btn:hover { border-color:var(--accent); color:var(--text); }
+  .var-rest .vr-btn.on { background:var(--accent); color:#000; border-color:var(--accent); font-weight:700; }
+  /* 手動進行ステップ（回数運動・タップ再開休憩） */
+  .timer-manual { width:240px; height:240px; margin:0 auto 1.5rem; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0.8rem; border:3px dashed var(--border); border-radius:50%; }
+  .timer-manual .tm-icon { font-size:2.4rem; }
+  .timer-manual .tm-text { font-size:0.9rem; color:#ccc; text-align:center; padding:0 1rem; line-height:1.4; }
+  .timer-manual .tm-next { background:var(--accent); color:#000; border:none; border-radius:8px; padding:0.7rem 1.6rem; font-size:1rem; font-weight:700; cursor:pointer; font-family:'Noto Sans JP',sans-serif; }
+  .timer-manual .tm-next:hover { background:#fff; }
 
   .timer-phase.hold { color:#ff9d2e; }
   .timer-ring.hold .ring-fg { stroke:#ff9d2e; }
@@ -425,6 +445,10 @@
   <p class="section-label">シーン・目的を選ぶ（すきま時間でOK）</p>
   <div class="care-grid" id="care-grid"></div>
   <div class="results" id="care-results"></div>
+
+  <p class="section-label acu-section-label">ツボ押し：シーン・目的を選ぶ（すきま時間でOK）</p>
+  <div class="care-grid" id="acu-grid"></div>
+  <div class="results" id="acu-results"></div>
 </div>
 
 <!-- ⑤ カスタマイズ -->
@@ -1020,9 +1044,222 @@ const CARE_DATA = {
   }
 };
 
+// ========== ツボ押しマッサージ データ ==========
+// description=押し方、acuLoc=ツボの場所、formPoints=押し方のコツ、reps=押す目安、caution=注意
+const ACUPRESSURE = [
+  {id:'ap_neck_shoulder', icon:'💆', name:'首・肩こり',       meta:'約5分・座って/立って', desc:'デスクワークの首肩のこりに'},
+  {id:'ap_eye',           icon:'👁', name:'目の疲れ',         meta:'約4分・どこでも',     desc:'スマホ・PCで疲れた目に'},
+  {id:'ap_head',          icon:'🧠', name:'頭痛・頭の重さ',   meta:'約4分・座って',       desc:'緊張型の頭重感・こめかみの張りに'},
+  {id:'ap_stress',        icon:'🌿', name:'ストレス・不眠',   meta:'約5分・寝る前にも',   desc:'気持ちを落ち着け眠りを深く'},
+  {id:'ap_stomach',       icon:'🍵', name:'胃腸・食べすぎ',   meta:'約4分・座って',       desc:'胃もたれ・食欲不振・便秘に'},
+  {id:'ap_legs',          icon:'🦵', name:'脚の疲れ・むくみ', meta:'約5分・床で',         desc:'立ち仕事・冷え・だるさに'},
+  {id:'ap_lowback',       icon:'🛟', name:'腰の疲れ',         meta:'約4分・立って/座って', desc:'重だるい腰をやさしくケア'},
+  {id:'ap_handcold',      icon:'🤲', name:'手の疲れ・冷え',   meta:'約4分・どこでも',     desc:'スマホ手・冷え・気分転換に'},
+];
 
+const ACUPRESSURE_DATA = {
+  ap_neck_shoulder: {
+    summary:'首・肩のツボは、こり固まった筋肉の血流を促してくれます。息を吐きながら「気持ちいい」と感じる強さで5秒ほど押し、ゆっくり離すのが基本です。痛気持ちいい程度にとどめ、強く押しすぎないようにしましょう。',
+    exercises:[
+      {name:'風池（ふうち）', target:'首こり・頭の重さ・眼精疲労', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手の親指をツボに当て、頭の中心へ向かって押し上げる。息を吐きながらゆっくり5秒押し、力を抜く。',
+        acuLoc:'後頭部の生え際、首の太い筋肉（僧帽筋）の外側のくぼみ。耳たぶの後ろから指を首の付け根に滑らせ、左右にあるへこみ。',
+        formPoints:['親指で頭の中心・斜め上方向へ押し上げる','他の指は頭を支えるように添える','目を閉じて行うとより緩む'],
+        caution:'強く押しすぎない。めまいがしたら中止'},
+      {name:'肩井（けんせい）', target:'肩こり・首の付け根の張り', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の中指で、肩の高い位置のツボを真下に向かって押す。息を吐きながら5秒押して離す。',
+        acuLoc:'首の付け根と肩先のちょうど真ん中、肩の一番高いところ。うつむくと出る首の骨と肩先を結んだ中点あたり。',
+        formPoints:['中指または人差し指・中指の2本で押す','真下（体の中心）へ向けて押す','左右両方行う'],
+        caution:'妊娠中は刺激を避ける。強揉みしすぎない'},
+      {name:'天柱（てんちゅう）', target:'首こり・頭痛・自律神経', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手の親指を当て、頭を軽く後ろに倒しながら押し上げる。',
+        acuLoc:'うなじの中央のくぼみ（盆のくぼ）から、左右に指1本分ずれた、太い筋肉の外側のへこみ。風池のやや内側・下。',
+        formPoints:['頭の重みを利用して押すと楽','親指の腹で気持ちよい強さに','呼吸を止めない'],
+        caution:'強く押し込まない'},
+      {name:'合谷（ごうこく）', target:'首肩こり・頭痛・万能のツボ', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指と人差し指でツボを挟み、人差し指の骨の方へ向けてやや強めに押す。',
+        acuLoc:'手の甲、親指と人差し指の骨が合わさる手前のくぼみ。骨のきわを押すと響く点。',
+        formPoints:['人差し指側の骨の下にもぐり込ませるように','少し強めでも良い（痛気持ちいい程度）','左右の手で行う'],
+        caution:'妊娠中は強い刺激を避ける'},
+    ]
+  },
+  ap_eye: {
+    summary:'目の周りのツボは、骨のふちをやさしく押すのが基本です。眼球そのものは絶対に押さないように注意してください。指の腹で5秒ほど心地よく押し、目を閉じて行うと一層リラックスできます。',
+    exercises:[
+      {name:'晴明（せいめい）', target:'目の疲れ・かすみ・充血', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指と人差し指でつまむように、鼻の付け根の左右を軽く押す。',
+        acuLoc:'目頭と鼻の付け根の間のくぼみ。左右の目頭のすぐ内側。',
+        formPoints:['親指と人差し指でつまんで軽く押す','下から上に持ち上げるように','非常にデリケートな部位なので優しく'],
+        caution:'眼球は押さない。コンタクトは外すと安心'},
+      {name:'攢竹（さんちく）', target:'眉の疲れ・頭重感', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手の親指を眉頭のくぼみに当て、上に向かって押し上げる。',
+        acuLoc:'眉毛の内端（眉頭）のすぐ下にある、骨のくぼみ。',
+        formPoints:['親指の腹で骨のふちを押し上げる','顔の重みを軽く乗せる','眉に沿って外へ少しずつずらしても良い'],
+        caution:'強く押しすぎない'},
+      {name:'太陽（たいよう）', target:'目の疲れ・こめかみの張り', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手の中指でこめかみのくぼみを当て、円を描くように優しく押し回す。',
+        acuLoc:'眉尻と目尻の中間から、外（耳側）へ指1本分ずれたこめかみのくぼみ。',
+        formPoints:['指の腹で小さく円を描く','力は控えめに','奥歯を噛むと動く部分の上あたり'],
+        caution:'こすりすぎない'},
+      {name:'風池（ふうち）', target:'眼精疲労・後頭部の緊張', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指で後頭部の生え際のくぼみを、頭の中心へ押し上げる。目の奥に響く感覚がある。',
+        acuLoc:'後頭部の生え際、首の太い筋肉の外側の左右のくぼみ。',
+        formPoints:['目をつぶって押すと効果を感じやすい','頭の重みを利用する'],
+        caution:'めまいがあれば中止'},
+    ]
+  },
+  ap_head: {
+    summary:'緊張型の頭痛・頭の重さには、頭頂部や首・手のツボが役立ちます。痛みが強いとき・拍動するような痛みのときは無理に押さず、医療機関を受診してください。あくまで軽い頭重感のセルフケアとして行いましょう。',
+    exercises:[
+      {name:'百会（ひゃくえ）', target:'頭の重さ・自律神経・リラックス', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手の中指を重ねてツボに当て、真下に向かって気持ちよく押す。',
+        acuLoc:'頭のてっぺん。両耳の最も高い点を結んだ線と、顔の中心線が交わるところ。押すと軽くへこむ点。',
+        formPoints:['中指の腹で真下へ垂直に押す','呼吸を吐きながら','軽くトントンと叩いても良い'],
+        caution:'強く押しすぎない'},
+      {name:'太陽（たいよう）', target:'こめかみの張り・側頭部の頭痛', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'中指でこめかみのくぼみを当て、円を描くように優しく押し回す。',
+        acuLoc:'眉尻と目尻の中間から外（耳側）へ指1本分のくぼみ。',
+        formPoints:['指の腹でやさしく円を描く','力は控えめに'],
+        caution:'こすりすぎない'},
+      {name:'合谷（ごうこく）', target:'頭痛全般・首肩のこり', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指で、人差し指の骨のきわに向けてやや強めに押す。',
+        acuLoc:'手の甲、親指と人差し指の骨が合わさる手前のくぼみ。',
+        formPoints:['骨の下にもぐらせるように','痛気持ちいい強さで','左右行う'],
+        caution:'妊娠中は強い刺激を避ける'},
+      {name:'風池（ふうち）', target:'後頭部から来る頭痛', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指で後頭部の生え際のくぼみを、頭の中心へ向け押し上げる。',
+        acuLoc:'後頭部の生え際、太い筋肉の外側のくぼみ。',
+        formPoints:['頭の重みを利用','目を閉じて'],
+        caution:'めまいがあれば中止'},
+    ]
+  },
+  ap_stress: {
+    summary:'気持ちを落ち着けるツボは、ゆっくりした深い呼吸と合わせて押すのがコツです。寝る前に照明を落として行うと、副交感神経が優位になり眠りに入りやすくなります。',
+    exercises:[
+      {name:'内関（ないかん）', target:'不安・動悸・吐き気・リラックス', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指でツボを当て、息を吐きながらゆっくり押す。',
+        acuLoc:'手首の内側のしわの中央から、ひじ方向へ指3本分。2本の腱の間。',
+        formPoints:['手首のしわから指3本そろえた先','2本のすじの間を押す','深呼吸と合わせる'],
+        caution:'強く押しすぎない'},
+      {name:'神門（しんもん）', target:'不安・緊張・不眠', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指で、手首のしわの上のくぼみを優しく押す。',
+        acuLoc:'手のひら側の手首のしわの上、小指側のはしにある腱の内側のくぼみ。',
+        formPoints:['小指側のすじのきわ','やさしい強さで','ゆっくり呼吸しながら'],
+        caution:'やさしく行う'},
+      {name:'労宮（ろうきゅう）', target:'ストレス・緊張・気分の高ぶり', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指で手のひらの中心を、ゆっくり押し込む。',
+        acuLoc:'手のひらの中央。軽く握ったとき中指の先が当たるあたり。',
+        formPoints:['手のひらの真ん中を親指で','じんわり押す','左右の手で'],
+        caution:'特になし'},
+      {name:'百会（ひゃくえ）', target:'自律神経の調整・安眠', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'頭頂部のツボを中指で真下に気持ちよく押す。',
+        acuLoc:'頭のてっぺん、両耳の最高点を結んだ線と顔の中心線の交点。',
+        formPoints:['垂直に軽く','深呼吸とともに'],
+        caution:'強く押しすぎない'},
+    ]
+  },
+  ap_stomach: {
+    summary:'胃腸の調子を整えるツボは、食後すぐを避けてリラックスした状態で押しましょう。お腹のツボはやさしく、手脚のツボはやや強めでも構いません。便秘にはお腹を「の」の字にさするのも効果的です。',
+    exercises:[
+      {name:'足三里（あしさんり）', target:'胃腸の調子・疲労回復・万能のツボ', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指でツボを当て、骨のきわに向けてやや強めに押す。',
+        acuLoc:'膝のお皿の下の外側のくぼみから、指4本分下。すねの骨の外側、押すと響くところ。',
+        formPoints:['膝下のくぼみから指4本そろえた下','すねの骨の外側のきわ','少し強めでも良い'],
+        caution:'特になし'},
+      {name:'中脘（ちゅうかん）', target:'胃もたれ・食べすぎ・胃の不快感', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×3回', rest:'なし',
+        description:'人差し指・中指・薬指をそろえ、息を吐きながらゆっくり優しく押す。',
+        acuLoc:'みぞおちとおへその真ん中。おへそから指5本分ほど上の正中線上。',
+        formPoints:['指3本で面で押す','息を吐きながらゆっくり','お腹は強く押さない'],
+        caution:'食後すぐは避ける。強く押さない'},
+      {name:'天枢（てんすう）', target:'便秘・下痢・お腹の張り', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×3回', rest:'なし',
+        description:'おへその左右のツボに指を当て、やさしく押す。お腹を時計回りにさするのも良い。',
+        acuLoc:'おへそから左右へそれぞれ指3本分外側。',
+        formPoints:['左右同時に指の腹で','お腹を「の」の字にマッサージ','温めるとなお良い'],
+        caution:'強く押さない。食後すぐは避ける'},
+      {name:'合谷（ごうこく）', target:'胃腸の不調・便通', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指で人差し指の骨のきわに向けて押す。',
+        acuLoc:'手の甲、親指と人差し指の骨が合わさる手前のくぼみ。',
+        formPoints:['骨のきわを押す','痛気持ちいい強さ'],
+        caution:'妊娠中は強い刺激を避ける'},
+    ]
+  },
+  ap_legs: {
+    summary:'脚のむくみ・疲れには、ふくらはぎや足のツボを下から上へ流すイメージで押すと、血流・リンパの巡りを助けます。お風呂上がりや就寝前に行うと効果的です。',
+    exercises:[
+      {name:'足三里（あしさんり）', target:'脚の疲れ・だるさ・胃腸', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指で骨のきわに向けてやや強めに押す。',
+        acuLoc:'膝のお皿の下の外側のくぼみから指4本分下、すねの骨の外側。',
+        formPoints:['膝下から指4本下','すねの骨の外きわ'],
+        caution:'特になし'},
+      {name:'承山（しょうざん）', target:'ふくらはぎの疲れ・こむら返り予防', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指でふくらはぎの中央のツボを、骨に向けて押し上げる。',
+        acuLoc:'ふくらはぎの後ろ側中央。アキレス腱から上にたどり、筋肉の盛り上がりが終わる「く」の字のくぼみ。',
+        formPoints:['ふくらはぎの真ん中の境目','下から押し上げるように','両脚行う'],
+        caution:'つりやすい人はやさしく'},
+      {name:'三陰交（さんいんこう）', target:'冷え・むくみ・women’s care', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指で内くるぶしの上のツボを、骨のきわに沿って押す。',
+        acuLoc:'内くるぶしの一番高いところから指4本分上、すねの骨の後ろぎわ。',
+        formPoints:['内くるぶしから指4本上','骨のうしろのきわを押す'],
+        caution:'妊娠中は強い刺激を避ける'},
+      {name:'湧泉（ゆうせん）', target:'足の疲れ・冷え・元気回復', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手の親指を重ねて、足裏のツボを心地よく押す。',
+        acuLoc:'足の裏、足指を曲げたときに最もへこむところ。土踏まずのやや上、足裏の中心線上。',
+        formPoints:['足裏の「人」の字のくぼみ','親指を重ねて押す','握りこぶしで叩いても良い'],
+        caution:'特になし'},
+    ]
+  },
+  ap_lowback: {
+    summary:'腰のツボは、両手を腰に当てて親指で押すと自分で刺激しやすい位置にあります。ぎっくり腰など急な強い痛みのときは押さず安静にしてください。慢性的な重だるさのケアとして行いましょう。',
+    exercises:[
+      {name:'腎兪（じんゆ）', target:'腰の重だるさ・疲労', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'両手を腰に当て、親指でツボを背骨の方へ向けて押す。',
+        acuLoc:'おへその真裏あたりの背骨から、左右へ指2本分外側。肋骨の一番下とウエストの間の高さ。',
+        formPoints:['親指で左右同時に','息を吐きながら','温めるとさらに楽'],
+        caution:'急な激痛時は押さない'},
+      {name:'大腸兪（だいちょうゆ）', target:'腰痛・お尻の張り', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'腰骨の高さの背骨の外側を、親指で押す。',
+        acuLoc:'左右の骨盤の一番高いところを結んだ線の高さで、背骨から左右へ指2本分外側。',
+        formPoints:['ベルトの高さあたり','背骨のきわを押す'],
+        caution:'急な激痛時は避ける'},
+      {name:'委中（いちゅう）', target:'腰から脚の張り・腰痛', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'膝裏のツボを両手の指で挟むように押す、または軽くもむ。',
+        acuLoc:'膝の裏側の横じわのちょうど中央。',
+        formPoints:['膝裏の真ん中','指でやさしく','強く押しすぎない（血管・神経が近い）'],
+        caution:'強圧は避ける'},
+      {name:'崑崙（こんろん）', target:'腰・足首のだるさ', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'親指と人差し指で外くるぶしとアキレス腱の間を挟んで押す。',
+        acuLoc:'外くるぶしの一番高いところとアキレス腱の間のくぼみ。',
+        formPoints:['くるぶしと腱の間のへこみ','挟むように押す'],
+        caution:'特になし'},
+    ]
+  },
+  ap_handcold: {
+    summary:'手のツボは、いつでもどこでも押せる手軽なセルフケアです。冷えや疲れ、気分転換に。反対の手の親指で、痛気持ちいい程度に押しましょう。',
+    exercises:[
+      {name:'合谷（ごうこく）', target:'万能・首肩こり・頭痛・冷え', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指で、人差し指の骨のきわに向けてやや強めに押す。',
+        acuLoc:'手の甲、親指と人差し指の骨が合わさる手前のくぼみ。',
+        formPoints:['骨の下にもぐらせる','痛気持ちいい強さ','左右行う'],
+        caution:'妊娠中は強い刺激を避ける'},
+      {name:'労宮（ろうきゅう）', target:'疲れ・ストレス・血行', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'5秒押す×5回', rest:'なし',
+        description:'反対の手の親指で手のひらの中心をじんわり押す。',
+        acuLoc:'手のひらの中央、軽く握ったとき中指の先が当たるところ。',
+        formPoints:['手のひらの真ん中','ゆっくり押す'],
+        caution:'特になし'},
+      {name:'八邪（はちじゃ）／指の付け根', target:'手指の冷え・こわばり', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'各5秒×2回', rest:'なし',
+        description:'指の股（水かき）の付け根を反対の親指と人差し指で挟んでもむ。',
+        acuLoc:'手の甲側、それぞれの指と指の付け根の間（水かきの部分）。',
+        formPoints:['指の間を1か所ずつ','挟んでもみほぐす','冷えた手を温めてから'],
+        caution:'特になし'},
+      {name:'井穴（せいけつ）／爪の生え際', target:'血行促進・気分転換', level:'初級', equipment:'なし', time:'1分', sets:'1', reps:'各3〜5秒', rest:'なし',
+        description:'各指の爪の生え際の角を、反対の手の親指と人差し指でつまんで押す。',
+        acuLoc:'各指の爪の生え際の両角（爪の根元の左右の角）。',
+        formPoints:['爪の根元の角をつまむ','1指ずつ順番に','刺激で頭がすっきり'],
+        caution:'強くつまみすぎない'},
+    ]
+  }
+};
 
-let selectedMuscles = new Set();
 let selectedSymptom = null;
 
 // ========== レベル判定データ ==========
@@ -1129,6 +1366,14 @@ document.getElementById('care-grid').innerHTML = CARE.map(c=>`
     <span class="c-desc">${c.desc}</span>
   </button>`).join('');
 
+document.getElementById('acu-grid').innerHTML = ACUPRESSURE.map(c=>`
+  <button class="care-card" onclick="selectAcu('${c.id}', this)">
+    <span class="c-icon">${c.icon}</span>
+    <span class="c-name">${c.name}</span>
+    <span class="c-meta">${c.meta}</span>
+    <span class="c-desc">${c.desc}</span>
+  </button>`).join('');
+
 function switchTab(tab) {
   const tabs = ['level','muscle','symptom','care','custom','journal'];
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active', tabs[i]===tab));
@@ -1166,6 +1411,55 @@ function selectCare(id, btn){
   results.appendChild(cards);
   results.classList.add('visible');
   results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+// ツボ押し：シーン選択 → ツボ詳細を表示
+function selectAcu(id, btn){
+  document.querySelectorAll('#acu-grid .care-card').forEach(c=>c.classList.remove('selected'));
+  btn.classList.add('selected');
+  const d = ACUPRESSURE_DATA[id];
+  const c = ACUPRESSURE.find(x=>x.id===id);
+  const results = document.getElementById('acu-results');
+  results.innerHTML = `
+    <div class="results-header">
+      <span class="results-title">${c.icon} ${c.name}のツボ押し</span>
+      <span class="results-count">${d.exercises.length} POINTS</span>
+    </div>
+    <div class="plan-summary"><strong>押し方の基本：</strong>${d.summary}</div>`;
+  const cards = document.createElement('div');
+  renderAcuCards(cards, d.exercises);
+  results.appendChild(cards);
+  results.classList.add('visible');
+  results.scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+// ツボ押しカード（場所・押し方を分かりやすく表示。ワークアウト追加ボタンは出さない）
+function renderAcuCards(container, points){
+  container.innerHTML = points.map(ex=>`
+    <div class="exercise-card muscle">
+      <div class="card-top" onclick="toggleCard(this.closest('.exercise-card'))">
+        <div>
+          <div class="ex-name">${ex.name}</div>
+          <div class="ex-target">${ex.target}</div>
+          <div class="ex-badges">
+            ${ex.time?`<span class="badge">⏱ ${ex.time}</span>`:''}
+            ${ex.reps?`<span class="badge">👆 ${ex.reps}</span>`:''}
+          </div>
+        </div>
+        <span class="toggle-icon">▼</span>
+      </div>
+      <div class="ex-detail">
+        ${ex.acuLoc?`<div class="acu-loc"><span class="acu-loc-title">📍 ツボの場所</span>${ex.acuLoc}</div>`:''}
+        <p class="ex-howto"><strong>押し方：</strong>${ex.description}</p>
+        ${ex.formPoints&&ex.formPoints.length?`
+          <div class="form-points">
+            <div class="fp-title">✓ 押し方のコツ</div>
+            <ul>${ex.formPoints.map(p=>`<li>${p}</li>`).join('')}</ul>
+          </div>`:''}
+        ${ex.reps?`<div class="ex-sets"><div class="set-box">${ex.reps}<span>押す目安</span></div></div>`:''}
+        ${ex.caution?`<p class="caution-text">⚠ ${ex.caution}</p>`:''}
+      </div>
+    </div>`).join('');
 }
 
 function toggleMuscle(id) {
@@ -1506,8 +1800,10 @@ function clearWorkout(){
 }
 
 // ----- 開始前レビュー画面 -----
-// タイマー方式: 'normal'（通常式）/ 'method37'（3/7式）
+// タイマー方式: 'normal'（通常式）/ 'method37'（3/7式）/ 'variable'（自由設定式）
 let selectedTimerMode = 'normal';
+// 自由設定式の設定（全種目共通）
+let variableConfig = { work:60, setRest:15, sets:3, exRest:60 };
 // 固定タイミング（仕様どおり）
 const TIMER_PRESET = {
   normal:   { work:30, setRest:15, exRest:60 },
@@ -1518,6 +1814,15 @@ function selectTimerMode(mode, btn){
   selectedTimerMode = mode;
   document.querySelectorAll('.mode-opt').forEach(o=>o.classList.remove('selected'));
   if(btn) btn.classList.add('selected');
+  const vr = document.getElementById('var-rest');
+  if(vr) vr.classList.toggle('hidden', mode!=='variable');
+}
+
+// 自由設定式の各項目を選択（grp:'work'|'setRest'|'sets'|'exRest'）
+function setVarConfig(grp, val, btn){
+  variableConfig[grp] = val;
+  const wrap = btn && btn.parentElement;
+  if(wrap) wrap.querySelectorAll('.vr-btn').forEach(b=>b.classList.toggle('on', b===btn));
 }
 
 function openWorkoutReview(){
@@ -1550,6 +1855,51 @@ function openWorkoutReview(){
           <div class="mo-name"><span class="mo-radio"></span>② 3/7式</div>
           <div class="mo-desc">1セット＝3→4→5→6→7秒の保持（間に15秒休憩）。セット間15秒で3セット、種目間60秒休憩で次の種目へ。</div>
         </button>
+        <button class="mode-opt ${selectedTimerMode==='variable'?'selected':''}" onclick="selectTimerMode('variable', this)">
+          <div class="mo-name"><span class="mo-radio"></span>③ 変動式（自由設定）</div>
+          <div class="mo-desc">1セットの運動時間・セット数・休憩を自分で決めます。全種目に同じ設定で適用されます。</div>
+        </button>
+        <div class="var-rest ${selectedTimerMode==='variable'?'':'hidden'}" id="var-rest">
+          <div class="vr-group">
+            <div class="vr-label">1セットの運動時間</div>
+            <div class="vr-opts">
+              <button class="vr-btn ${variableConfig.work===30?'on':''}" onclick="setVarConfig('work',30,this)">30秒</button>
+              <button class="vr-btn ${variableConfig.work===60?'on':''}" onclick="setVarConfig('work',60,this)">60秒</button>
+              <button class="vr-btn ${variableConfig.work===90?'on':''}" onclick="setVarConfig('work',90,this)">90秒</button>
+              <button class="vr-btn ${variableConfig.work===120?'on':''}" onclick="setVarConfig('work',120,this)">120秒</button>
+            </div>
+          </div>
+          <div class="vr-group">
+            <div class="vr-label">セット数</div>
+            <div class="vr-opts">
+              <button class="vr-btn ${variableConfig.sets===1?'on':''}" onclick="setVarConfig('sets',1,this)">1</button>
+              <button class="vr-btn ${variableConfig.sets===2?'on':''}" onclick="setVarConfig('sets',2,this)">2</button>
+              <button class="vr-btn ${variableConfig.sets===3?'on':''}" onclick="setVarConfig('sets',3,this)">3</button>
+              <button class="vr-btn ${variableConfig.sets===4?'on':''}" onclick="setVarConfig('sets',4,this)">4</button>
+              <button class="vr-btn ${variableConfig.sets===5?'on':''}" onclick="setVarConfig('sets',5,this)">5</button>
+              <button class="vr-btn ${variableConfig.sets===6?'on':''}" onclick="setVarConfig('sets',6,this)">6</button>
+            </div>
+          </div>
+          <div class="vr-group">
+            <div class="vr-label">セット間休憩</div>
+            <div class="vr-opts">
+              <button class="vr-btn ${variableConfig.setRest===5?'on':''}" onclick="setVarConfig('setRest',5,this)">5秒</button>
+              <button class="vr-btn ${variableConfig.setRest===10?'on':''}" onclick="setVarConfig('setRest',10,this)">10秒</button>
+              <button class="vr-btn ${variableConfig.setRest===15?'on':''}" onclick="setVarConfig('setRest',15,this)">15秒</button>
+              <button class="vr-btn ${variableConfig.setRest===30?'on':''}" onclick="setVarConfig('setRest',30,this)">30秒</button>
+              <button class="vr-btn ${variableConfig.setRest==='manual'?'on':''}" onclick="setVarConfig('setRest','manual',this)">タップで再開</button>
+            </div>
+          </div>
+          <div class="vr-group">
+            <div class="vr-label">種目間休憩</div>
+            <div class="vr-opts">
+              <button class="vr-btn ${variableConfig.exRest===15?'on':''}" onclick="setVarConfig('exRest',15,this)">15秒</button>
+              <button class="vr-btn ${variableConfig.exRest===30?'on':''}" onclick="setVarConfig('exRest',30,this)">30秒</button>
+              <button class="vr-btn ${variableConfig.exRest===60?'on':''}" onclick="setVarConfig('exRest',60,this)">60秒</button>
+              <button class="vr-btn ${variableConfig.exRest==='manual'?'on':''}" onclick="setVarConfig('exRest','manual',this)">タップで再開</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="timer-controls">
         <button class="timer-btn" onclick="closeTimer()">戻る</button>
@@ -1602,7 +1952,7 @@ function beginWorkout(){
           steps.push({ kind:'rest', ex, duration:P.setRest, label:'セット間休憩', nextLabel:`${ex.name}（セット${s+1}）` });
         }
       }
-    } else {
+    } else if(selectedTimerMode==='method37') {
       // 3/7式: 1セット = 3→4→5→6→7秒保持（間に15秒休憩）
       const P = TIMER_PRESET.method37;
       for(let s=1; s<=SETS; s++){
@@ -1620,11 +1970,35 @@ function beginWorkout(){
           steps.push({ kind:'rest', ex, duration:P.setRest, label:'セット間休憩', nextLabel:`${ex.name}（セット${s+1}）` });
         }
       }
+    } else {
+      // 変動式（自由設定）：全種目共通の運動時間・セット数・休憩で組む
+      const C = variableConfig; // {work, setRest, sets, exRest}
+      for(let s=1; s<=C.sets; s++){
+        steps.push({ kind:'work', ex, set:s, totalSets:C.sets, duration:C.work, label:`${C.work}秒運動` });
+        const isLastSet = (s===C.sets);
+        if(isLastSet){
+          if(ei!==lastEx){
+            if(C.exRest==='manual'){
+              steps.push({ kind:'rest', ex, manual:true, label:'種目間休憩', nextLabel: workoutQueue[ei+1].name });
+            } else {
+              steps.push({ kind:'rest', ex, duration:C.exRest, label:'種目間休憩', nextLabel: workoutQueue[ei+1].name });
+            }
+          }
+        } else {
+          if(C.setRest==='manual'){
+            steps.push({ kind:'rest', ex, manual:true, label:'セット間休憩', nextLabel:`${ex.name}（セット${s+1}）` });
+          } else {
+            steps.push({ kind:'rest', ex, duration:C.setRest, label:'セット間休憩', nextLabel:`${ex.name}（セット${s+1}）` });
+          }
+        }
+      }
     }
   });
 
   if(steps.length===0) return;
-  timerState = { steps, idx:0, remaining:steps[0].duration, paused:false, startTime:Date.now(), mode:selectedTimerMode };
+  const first = steps[0];
+  const firstManual = (first.kind==='count') || (first.kind==='rest' && first.manual);
+  timerState = { steps, idx:0, remaining: firstManual?0:first.duration, paused:false, startTime:Date.now(), mode:selectedTimerMode, manualWait:firstManual };
   renderTimerStep();
   startTick();
 }
@@ -1633,6 +2007,7 @@ function startTick(){
   clearInterval(timerInterval);
   timerInterval = setInterval(()=>{
     if(!timerState || timerState.paused) return;
+    if(timerState.manualWait) return; // 手動進行ステップはタップ待ち
     timerState.remaining--;
     if(timerState.remaining<=0){
       nextStep();
@@ -1649,10 +2024,12 @@ function nextStep(){
     finishWorkout();
     return;
   }
+  const st = timerState.steps[timerState.idx];
   // 次が運動/保持なら「開始」音、休憩なら「休憩」音
-  const nextKind = timerState.steps[timerState.idx].kind;
-  beep(nextKind==='rest' ? 'rest' : 'work');
-  timerState.remaining = timerState.steps[timerState.idx].duration;
+  beep(st.kind==='rest' ? 'rest' : 'work');
+  // 手動進行ステップ（回数運動・タップ再開休憩）は自動カウントしない
+  timerState.manualWait = (st.kind==='count') || (st.kind==='rest' && st.manual);
+  timerState.remaining = timerState.manualWait ? 0 : st.duration;
   renderTimerStep();
 }
 
@@ -1664,23 +2041,30 @@ function renderTimerStep(){
   const main = document.getElementById('timer-main');
   const isRest = st.kind==='rest';
   const isHold = st.kind==='hold';
+  const isCount = st.kind==='count';
+  const isManual = timerState.manualWait;
   const fp = st.ex.formPoints||[];
   const ringClass = isRest ? 'rest' : (isHold ? 'hold' : '');
   const phaseClass = isRest ? 'rest' : (isHold ? 'hold' : '');
-  const phaseLabel = isRest ? `REST ${st.label||'休憩'}` : (isHold ? `HOLD 保持` : `WORK 運動`);
+  const phaseLabel = isRest ? `REST ${st.label||'休憩'}` : (isHold ? `HOLD 保持` : (isCount ? `WORK 回数運動` : `WORK 運動`));
   // meta line
   let meta;
   if(isRest){
     meta = st.nextLabel ? `次は ${st.nextLabel}` : '休憩';
   } else if(isHold){
     meta = `セット ${st.set} / ${st.totalSets} ・ ${st.holdIdx}/${st.holdTotal}本目 ・ ${st.duration}秒キープ`;
+  } else if(isCount){
+    meta = `セット ${st.set} / ${st.totalSets} ・ ${st.label}`;
   } else {
     meta = `セット ${st.set} / ${st.totalSets} ・ ${st.label}`;
   }
-  main.innerHTML = `
-    <div class="timer-phase ${phaseClass}">${phaseLabel}</div>
-    <div class="timer-ex-name">${st.ex.name}</div>
-    <div class="timer-ex-meta">${meta}</div>
+  // 中央表示：手動ステップは回数/タップ案内、それ以外はカウントダウンリング
+  const centerHtml = isManual ? `
+    <div class="timer-manual">
+      <div class="tm-icon">${isCount ? '🔁' : '⏸'}</div>
+      <div class="tm-text">${isCount ? (st.label||'回数ぶん行う') : '休憩中'}</div>
+      <button class="tm-next" onclick="nextStep()">${isCount ? '✓ 完了・次へ' : '▶ 再開する'}</button>
+    </div>` : `
     <div class="timer-ring ${ringClass}">
       <svg width="240" height="240" viewBox="0 0 240 240">
         <circle class="ring-bg" cx="120" cy="120" r="108"></circle>
@@ -1691,7 +2075,12 @@ function renderTimerStep(){
         <span class="tc-num" id="tc-num">${timerState.remaining}</span>
         <span class="tc-sub">秒</span>
       </div>
-    </div>
+    </div>`;
+  main.innerHTML = `
+    <div class="timer-phase ${phaseClass}">${phaseLabel}</div>
+    <div class="timer-ex-name">${st.ex.name}</div>
+    <div class="timer-ex-meta">${meta}</div>
+    ${centerHtml}
     ${(!isRest && fp.length)?`
       <div class="timer-formpts">
         <div class="tf-title">✓ フォームのポイント</div>
@@ -1702,7 +2091,7 @@ function renderTimerStep(){
       <button class="timer-btn" onclick="skipStep()">⏭ スキップ</button>
       <button class="timer-btn danger" onclick="stopWorkout()">■ 中止</button>
     </div>`;
-  updateTimerDisplay();
+  if(!isManual) updateTimerDisplay();
 }
 
 function updateTimerDisplay(){
