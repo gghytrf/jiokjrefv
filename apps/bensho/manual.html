@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>東洋医学 弁証支援アプリ 使用説明書</title>
+<title>東洋医学 弁証・選穴支援アプリ 使用説明書</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700;900&family=Noto+Serif+JP:wght@400;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -290,23 +290,26 @@ footer a{color:var(--mid)}
 </head><body>
 <div class="cover"><div class="cover-inner">
   <span class="cover-eyebrow">USER MANUAL</span>
-  <h1>東洋医学 <em>弁証</em>支援アプリ</h1>
-  <p class="cover-sub">問診から弁証鑑別・カルテまで</p>
+  <h1>東洋医学 <em>弁証・選穴</em>支援アプリ</h1>
+  <p class="cover-sub">経穴検索（主治症⇄経穴）と、問診から弁証鑑別・カルテまで</p>
   <span class="cover-ver">東洋医学 学習スイート 収録アプリ</span>
-  <div class="cover-chips"><div class="chip"><strong>🩺</strong>問診→弁証→カルテ</div><div class="chip"><strong>📊</strong>弁証スコア表示</div><div class="chip"><strong>🖐️</strong>徒手検査の分岐</div><div class="chip"><strong>⚙</strong>データ編集・表示設定</div></div>
+  <div class="cover-chips"><div class="chip"><strong>🔎</strong>経穴検索(主治症⇄経穴)</div><div class="chip"><strong>🩺</strong>問診→弁証→カルテ</div><div class="chip"><strong>👆</strong>治療穴タップで主治症</div><div class="chip"><strong>🖐️</strong>徒手検査の分岐</div></div>
   <div class="cover-credits">東洋医学 学習スイート<br>制作者：大阪行岡医療専門学校長柄校　鍼灸科　75期生　藤本</div>
 </div></div>
 <div class="toc-section"><div class="wrap">
   <h2>TABLE OF CONTENTS</h2>
-  <div class="toc-grid"><a class="toc-item" href="#b1"><span class="toc-num">01</span>このアプリについて</a><a class="toc-item" href="#b2"><span class="toc-num">02</span>5つのタブの流れ</a><a class="toc-item" href="#b3"><span class="toc-num">03</span>症状入力と徒手検査</a><a class="toc-item" href="#b4"><span class="toc-num">04</span>弁証スコアの見方</a><a class="toc-item" href="#b5"><span class="toc-num">05</span>カルテの保存・検索</a><a class="toc-item" href="#b6"><span class="toc-num">06</span>データ編集・表示設定</a><a class="toc-item" href="#b7"><span class="toc-num">07</span>患者用問診表</a><a class="toc-item" href="#b8"><span class="toc-num">08</span>困ったときは</a></div>
+  <div class="toc-grid"><a class="toc-item" href="#b1"><span class="toc-num">01</span>このアプリについて</a><a class="toc-item" href="#b9"><span class="toc-num">02</span>経穴検索の使い方</a><a class="toc-item" href="#b2"><span class="toc-num">03</span>7つのタブの流れ</a><a class="toc-item" href="#b3"><span class="toc-num">03</span>症状入力と徒手検査</a><a class="toc-item" href="#b4"><span class="toc-num">04</span>弁証スコアの見方</a><a class="toc-item" href="#b5"><span class="toc-num">05</span>カルテの保存・検索</a><a class="toc-item" href="#b6"><span class="toc-num">06</span>データ編集・表示設定</a><a class="toc-item" href="#b7"><span class="toc-num">07</span>患者用問診表</a><a class="toc-item" href="#b8"><span class="toc-num">08</span>困ったときは</a></div>
 </div></div>
 <div class="section" id="b1"><div class="wrap">
   <div class="section-header"><div class="sec-num">01</div>
   <div class="section-header-text"><h2>このアプリについて</h2><p>弁証鑑別と臨床補助</p></div></div>
-  <p class="prose">「東洋医学 弁証支援アプリ」は、問診 → 症状入力 → 徒手検査 → 弁証鑑別 → 治療方針 → カルテ保存・検索 という一連の流れを支援するツールです。入力した症状から弁証パターンの候補をスコア表示し、治療穴（補・瀉）や経絡、徒手検査の判断の分岐を参考として提示します。</p><div class="callout callout-red"><div class="ico">⚠️</div><div class="body"><h4>鑑別支援ツールです</h4><p>本アプリは学習・臨床補助のための鑑別支援ツールです。表示される弁証・治療穴・検査は候補であり、確定診断ではありません。最終的な判断は必ず施術者ご自身が行ってください。</p></div></div><div class="callout callout-info"><div class="ico">📴</div><div class="body"><h4>オフライン対応</h4><p>一度開けば、通信のない場所でも起動・利用できます。保存したカルテや編集内容は端末内（ブラウザ）に保持されます。</p></div></div>
-</div></div><div class="section" id="b2"><div class="wrap">
+  <p class="prose">「東洋医学 弁証・選穴支援アプリ」は、経穴検索（主治症から経穴／経穴名から主治症）と、問診 → 症状入力 → 徒手検査 → 弁証鑑別 → 治療方針 → カルテ保存・検索 という一連の流れを、ひとつのアプリで支援するツールです。入力した症状から弁証パターンの候補をスコア表示し、治療穴（補・瀉）や経絡、徒手検査の判断の分岐を参考として提示します。弁証結果に出た治療穴をタップすると、その経穴の主治症を取り込んだデータから確認できます。</p><div class="callout callout-red"><div class="ico">⚠️</div><div class="body"><h4>鑑別支援ツールです</h4><p>本アプリは学習・臨床補助のための鑑別支援ツールです。表示される弁証・治療穴・検査は候補であり、確定診断ではありません。最終的な判断は必ず施術者ご自身が行ってください。</p></div></div><div class="callout callout-info"><div class="ico">📴</div><div class="body"><h4>オフライン対応</h4><p>一度開けば、通信のない場所でも起動・利用できます。保存したカルテや編集内容・取り込んだ経穴データは端末内（ブラウザ）に保持されます。</p></div></div>
+</div></div><div class="section" id="b9"><div class="wrap">
+  <div class="section-header-text"><h2>経穴検索の使い方</h2><p>主治症 ⇄ 経穴 ／ データ取り込み</p></div></div>
+  <p class="prose">上部のタブ「① 主治症→経穴」「② 経穴名→主治症」で、経穴の検索ができます。「主治症→経穴」は症状（主治症）を入力して、その症状に効く経穴を各家（出典）の主治症データから探します。複数の症状を AND／OR で絞り込め、出典でも絞り込めます。「経穴名→主治症」は、経穴名を漢字または読み（ふりがな）で検索し、その経穴の主治症・取穴部位を表示します。</p><div class="callout callout-tip"><div class="ico">📥</div><div class="body"><h4>はじめに経穴データを取り込みます</h4><p>経穴検索を使うには、最初に経穴データ（acupoints.json）の取り込みが必要です。「主治症→経穴」タブ右上の「📥 経穴データ取り込み」、または画面の案内から、配布された acupoints.json を選択してください。取り込んだデータは端末内に保存され、次回からはオフラインでも使えます。同じデータは弁証結果の治療穴タップでも使われます。</p></div></div><div class="callout callout-tip"><div class="ico">👆</div><div class="body"><h4>弁証の治療穴をタップで主治症を表示</h4><p>「⑥ 弁証」タブの結果に出る治療穴（下線付き）をタップすると、その経穴の主治症・読み・取穴部位がポップアップ（モーダル）で表示されます。経穴データを取り込んでいない場合は、その案内が出ます。</p></div></div>
+</div><div class="section" id="b2"><div class="wrap">
   <div class="section-header"><div class="sec-num">02</div>
-  <div class="section-header-text"><h2>5つのタブの流れ</h2><p>① 問診 → ② 症状 → ③ 徒手検査 → ④ 弁証 → ⑤ カルテ</p></div></div>
+  <div class="section-header-text"><h2>7つのタブの流れ</h2><p>① 主治症→経穴 ② 経穴名→主治症 ｜ ③ 問診 → ④ 症状 → ⑤ 徒手検査 → ⑥ 弁証 → ⑦ カルテ</p></div></div>
   <div class="steps"><div class="step"><div class="step-n">1</div><div class="step-body"><h4>① 問診表</h4><p>患者さんに記入してもらう空欄の問診表を印刷・PDF出力できます（アプリの入力欄とは別物です）。見出しや項目、載せる症状は編集できます（→6章）。</p></div></div><div class="step"><div class="step-n">2</div><div class="step-body"><h4>② 症状入力</h4><p>当てはまる症状にチェックを入れます。グループごとに整理され、複数選択できます。問診で「主訴」「経過・きっかけ・随伴症状」を入力してから進むと、その文章から優先して確認したい症状が自動でピックアップされ、各グループの先頭に「優先」付きで表示・自動チェックされます。</p></div></div><div class="step"><div class="step-n">3</div><div class="step-body"><h4>③ 徒手検査フロー</h4><p>痛みの部位などに応じて、該当する徒手検査・機能評価が表示されます。「実施した」検査の結果に応じて、判断の分岐（参考）が候補を示します。</p></div></div><div class="step"><div class="step-n">4</div><div class="step-body"><h4>④ 弁証・治療方針</h4><p>入力内容から弁証パターンの候補をスコア順に表示します。各候補に治法・治療穴（補=補う／瀉=瀉す／平=平補平瀉）や関連経絡が示されます。「↻ 弁証を再計算」で再計算できます。</p></div></div><div class="step"><div class="step-n">5</div><div class="step-body"><h4>⑤ カルテ</h4><p>弁証結果を患者情報とともにカルテとして保存できます。保存したカルテは検索・編集でき、CSV出力も可能です。カルテを含む全データのバックアップは統合ホームから行えます。</p></div></div></div>
 </div></div><div class="section" id="b3"><div class="wrap">
   <div class="section-header"><div class="sec-num">03</div>

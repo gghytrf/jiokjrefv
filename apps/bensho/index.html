@@ -62,9 +62,9 @@
 <meta name="description" content="東洋医学の弁証鑑別・治療穴・徒手検査・カルテ管理を行う学習・臨床補助ツール">
 <meta name="theme-color" content="#7a5c3e">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="弁証支援">
+<meta name="apple-mobile-web-app-title" content="弁証・選穴">
 <link rel="apple-touch-icon" href="./icon-192.png">
-<title>東洋医学 弁証支援アプリ</title>
+<title>東洋医学 弁証・選穴支援アプリ</title>
 <style>
   :root{
     --bg:#f5f3ee; --panel:#fffdf8; --ink:#2c2620; --sub:#6b6256;
@@ -88,7 +88,8 @@
   .ver-row .new{color:var(--pos)}
   .disclaimer{background:var(--hi);border:1px solid var(--line);border-radius:10px;
     padding:10px 14px;font-size:.8rem;color:var(--sub);margin:14px 0}
-  .tabs{display:flex;gap:6px;margin:18px 0 14px;flex-wrap:wrap}
+  .tabs{display:flex;gap:6px;margin:18px 0 14px;flex-wrap:wrap;align-items:stretch}
+  .tabdiv{width:1px;align-self:stretch;background:var(--line);margin:2px 4px}
   .tab{flex:1;min-width:96px;padding:10px 6px;text-align:center;border:1px solid var(--line);
     background:var(--panel);border-radius:10px;cursor:pointer;font-size:.82rem;color:var(--sub);
     user-select:none;transition:.15s}
@@ -299,13 +300,182 @@
 #sym-picker .sp-l{font-weight:600;color:#2a2018}
 #sym-picker .sp-g{font-size:10.5px;color:#a89}
 #sym-picker .sp-empty{text-align:center;color:#a89;padding:20px;font-size:13px}
+
+/* ===== 統合：選穴支援アプリのCSS（.acu-scope配下にスコープ化）===== */
+.acu-scope{--paper:#fbf8f1;--ink-soft:#6b5d52;--accent-soft:#c8896f;--gold:#b08856;--tag:#efe4d2;--shadow:0 1px 3px rgba(80,60,40,.12),0 8px 24px rgba(80,60,40,.06);}
+.acu-scope *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+.acu-scope{
+  background:var(--bg);color:var(--ink);
+  font-family:"Hiragino Mincho ProN","Yu Mincho",serif;
+  line-height:1.7;-webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(circle at 20% 0%,rgba(176,136,86,.05),transparent 40%);
+  min-height:100vh;
+}
+.acu-scope header{
+  position:sticky;top:0;z-index:20;
+  background:linear-gradient(180deg,#2b2320,#3a302a);color:#f4efe6;
+  padding:14px 18px 12px;box-shadow:0 2px 12px rgba(0,0,0,.18);
+}
+.acu-scope header .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.acu-scope header .bar .txt{flex:1 1 100%;min-width:0}
+
+@media (min-width:560px){.acu-scope header .bar .txt{flex:1 1 auto}
+}.acu-scope 
+header .bar > button, .acu-scope header .bar .fs-ctrl{flex:0 0 auto}
+.acu-scope 
+.fs-ctrl{flex-shrink:0;display:inline-flex;align-items:center;gap:5px}
+.acu-scope .fs-ctrl button{width:30px;height:30px;border:1px solid rgba(232,201,140,.45);background:rgba(255,255,255,.10);
+  color:#f4efe6;border-radius:8px;cursor:pointer;line-height:1;font-weight:700;font-family:inherit;padding:0;transition:background .2s}
+.acu-scope .fs-ctrl button:active{background:var(--gold);color:#2b2320}
+.acu-scope .fs-ctrl .fs-minus{font-size:12px}
+.acu-scope .fs-ctrl .fs-plus{font-size:16px}
+.acu-scope .fs-ctrl .fs-label{font-size:.62rem;color:#c9b9a5;min-width:26px;text-align:center;letter-spacing:.05em}
+.acu-scope header .ttl{font-size:1.18rem;letter-spacing:.12em;font-weight:600;display:flex;align-items:center;gap:.5em}
+.acu-scope .refresh{
+  flex-shrink:0;display:inline-flex;align-items:center;gap:6px;
+  font-family:inherit;font-size:.78rem;letter-spacing:.05em;
+  color:#f4efe6;background:rgba(255,255,255,.10);
+  border:1px solid rgba(232,201,140,.45);border-radius:20px;
+  padding:7px 13px;cursor:pointer;transition:background .2s;
+}
+.acu-scope .refresh:active{background:rgba(255,255,255,.2)}
+.acu-scope .refresh .ico{display:inline-block;font-size:.95rem;line-height:1}
+.acu-scope .refresh.spin .ico{animation:spin .8s linear infinite}
+.acu-scope .refresh:disabled{opacity:.6;cursor:default}
+
+@keyframes spin{to{transform:rotate(360deg)}}.acu-scope header .ttl .seal{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:26px;height:26px;border:1.5px solid var(--gold);border-radius:5px;
+  color:var(--gold);font-size:.8rem;letter-spacing:0;
+}
+.acu-scope header .sub{font-size:.7rem;color:#c9b9a5;letter-spacing:.18em;margin-top:2px}
+.acu-scope .wrap{max-width:760px;margin:0 auto;padding:16px 16px 90px}
+.acu-scope .search-card{
+  background:var(--paper);border:1px solid var(--line);border-radius:14px;
+  padding:16px 16px 14px;box-shadow:var(--shadow);
+}
+.acu-scope .lbl{font-size:.74rem;color:var(--ink-soft);letter-spacing:.1em;margin-bottom:6px}
+.acu-scope .inputrow{display:flex;gap:8px}
+.acu-scope input[type=text]{
+  flex:1;font-family:inherit;font-size:1rem;padding:11px 12px;
+  border:1px solid var(--line);border-radius:9px;background:#fff;color:var(--ink);
+}
+.acu-scope input[type=text]:focus{outline:none;border-color:var(--accent-soft);box-shadow:0 0 0 3px rgba(154,79,58,.1)}
+.acu-scope .btn{
+  font-family:inherit;font-size:.92rem;padding:11px 16px;border:none;border-radius:9px;
+  background:var(--accent);color:#fff;cursor:pointer;letter-spacing:.05em;white-space:nowrap;
+}
+.acu-scope .btn:active{transform:translateY(1px)}
+.acu-scope .btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent-soft)}
+.acu-scope .terms{display:flex;flex-wrap:wrap;gap:7px;margin-top:12px;min-height:4px}
+.acu-scope .term{
+  display:inline-flex;align-items:center;gap:6px;background:var(--accent);color:#fff;
+  padding:5px 8px 5px 11px;border-radius:20px;font-size:.84rem;
+}
+.acu-scope .term b{font-weight:500}
+.acu-scope .term span{cursor:pointer;font-size:1.05rem;line-height:1;opacity:.85}
+.acu-scope .opts{margin-top:13px;border-top:1px dashed var(--line);padding-top:11px}
+.acu-scope .opt-row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:.86rem;color:var(--ink-soft)}
+.acu-scope .seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.acu-scope .seg button{
+  font-family:inherit;font-size:.82rem;padding:6px 13px;border:none;background:#fff;color:var(--ink-soft);cursor:pointer;
+}
+.acu-scope .seg button.on{background:var(--accent);color:#fff}
+.acu-scope .srcfilter{margin-top:11px}
+.acu-scope .srcfilter summary{font-size:.84rem;color:var(--accent);cursor:pointer;letter-spacing:.05em}
+.acu-scope .srcgrid{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px}
+.acu-scope .chk{font-size:.82rem;color:var(--ink-soft);display:inline-flex;align-items:center;gap:5px;
+  background:var(--tag);padding:5px 10px;border-radius:7px;cursor:pointer;border:1px solid transparent}
+.acu-scope .chk.on{background:#fff;border-color:var(--accent-soft);color:var(--ink)}
+.acu-scope 
+.chk .chkbox{display:inline-block;width:.9em;text-align:center;flex:0 0 auto;color:var(--accent-soft);font-weight:700}
+.acu-scope .chk .chklbl{white-space:nowrap}
+.acu-scope .suggest{margin-top:14px}
+.acu-scope .suggest .lbl{margin-bottom:7px}
+.acu-scope .chips{display:flex;flex-wrap:wrap;gap:7px}
+.acu-scope .chip{font-family:inherit;font-size:.8rem;padding:5px 11px;border:1px solid var(--line);
+  border-radius:18px;background:#fff;color:var(--ink-soft);cursor:pointer}
+.acu-scope .chip:active{background:var(--tag)}
+.acu-scope .summary{display:flex;align-items:baseline;justify-content:space-between;margin:22px 2px 12px}
+.acu-scope .summary .cnt{font-size:1.05rem;letter-spacing:.05em}
+.acu-scope .summary .cnt b{color:var(--accent);font-size:1.4rem;padding:0 3px}
+.acu-scope .summary .note{font-size:.74rem;color:var(--ink-soft)}
+.acu-scope .card{
+  background:var(--paper);border:1px solid var(--line);border-radius:13px;
+  margin-bottom:13px;box-shadow:var(--shadow);overflow:hidden;
+  animation:rise .35s ease both;
+}
+
+@keyframes rise{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}.acu-scope .card .head{padding:13px 15px;cursor:pointer;display:flex;align-items:center;gap:12px}
+.acu-scope .card .head:hover{background:rgba(176,136,86,.04)}
+.acu-scope .pt-who{font-size:.7rem;color:#fff;background:var(--gold);padding:3px 8px;border-radius:6px;letter-spacing:.05em;font-weight:600;white-space:nowrap}
+.acu-scope .pt-name{font-size:1.32rem;font-weight:600;letter-spacing:.06em}
+.acu-scope .pt-read{font-size:.82rem;color:var(--ink-soft);margin-left:.15rem}
+.acu-scope .pt-mer{font-size:.74rem;color:var(--ink-soft);margin-left:auto;white-space:nowrap}
+.acu-scope .pt-badge{font-size:.7rem;color:var(--accent);border:1px solid var(--accent-soft);border-radius:20px;padding:2px 9px;white-space:nowrap}
+.acu-scope .card .arrow{color:var(--ink-soft);transition:transform .25s;font-size:.8rem}
+.acu-scope .card.open .arrow{transform:rotate(90deg)}
+.acu-scope .card .body{display:none;padding:0 15px 15px;border-top:1px solid var(--line)}
+.acu-scope .card.open .body{display:block}
+.acu-scope .loc{font-size:.86rem;color:var(--ink-soft);margin:11px 0 14px;padding:9px 12px;background:var(--tag);border-radius:8px}
+.acu-scope .loc b{color:var(--ink);font-weight:600}
+.acu-scope .src{margin-bottom:13px}
+.acu-scope .src:last-child{margin-bottom:2px}
+.acu-scope .src .sname{font-size:.74rem;color:var(--gold);font-weight:600;letter-spacing:.08em;margin-bottom:3px;border-left:3px solid var(--gold);padding-left:7px}
+.acu-scope .src .stext{font-size:.92rem;line-height:1.75}
+.acu-scope mark{background:#f6e3b8;color:var(--accent);padding:0 1px;border-radius:2px;font-weight:600}
+.acu-scope .empty{text-align:center;color:var(--ink-soft);padding:50px 20px;font-size:.95rem}
+.acu-scope .empty .big{font-size:2.4rem;margin-bottom:10px;opacity:.5}
+.acu-scope footer{text-align:center;font-size:.7rem;color:var(--ink-soft);padding:24px 16px 40px;letter-spacing:.05em}
+.acu-scope footer .ver{opacity:.7}
+.acu-scope #toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(80px);
+  background:var(--ink);color:#fff;padding:10px 18px;border-radius:24px;font-size:.85rem;
+  opacity:0;transition:.3s;z-index:50;box-shadow:0 6px 20px rgba(0,0,0,.25)}
+.acu-scope #toast.show{transform:translateX(-50%);opacity:1}
+.acu-scope 
+.modetab{display:flex;gap:0;margin:0 auto;max-width:760px;padding:14px 16px 0}
+.acu-scope .modetab button{
+  flex:1;font-family:inherit;font-size:.92rem;letter-spacing:.06em;
+  padding:11px 8px;border:1px solid var(--line);background:var(--paper);color:var(--ink-soft);
+  cursor:pointer;transition:.2s;
+}
+.acu-scope .modetab button:first-child{border-radius:10px 0 0 10px}
+.acu-scope .modetab button:last-child{border-radius:0 10px 10px 0;border-left:none}
+.acu-scope .modetab button.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+.acu-scope 
+.pane[hidden]{display:none}
+.acu-scope .mer-filter{margin-top:13px;border-top:1px dashed var(--line);padding-top:11px}
+.acu-scope .mer-filter summary{font-size:.84rem;color:var(--accent);cursor:pointer;letter-spacing:.05em}
+.acu-scope .mergrid{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+.acu-scope .merchip{font-family:inherit;font-size:.8rem;padding:5px 11px;border:1px solid var(--line);
+  border-radius:18px;background:#fff;color:var(--ink-soft);cursor:pointer}
+.acu-scope .merchip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.acu-scope .rev-name{font-size:1.32rem;font-weight:600;letter-spacing:.06em}
+.acu-scope .rev-read{font-size:.82rem;color:var(--ink-soft);margin-left:.4rem}
+.acu-scope .rev-yomi{font-size:.78rem;color:var(--ink-soft);margin-left:2px}
+
+
+/* 経穴詳細モーダル */
+.acu-modal{position:fixed;inset:0;background:rgba(43,35,32,.5);z-index:1000;display:none;align-items:flex-start;justify-content:center;overflow-y:auto;padding:24px 12px}
+.acu-modal.show{display:flex}
+.acu-modal-inner{background:var(--paper,#fbf8f1);max-width:680px;width:100%;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);margin:auto;position:relative}
+.acu-modal-close{position:sticky;top:0;float:right;margin:10px 10px 0 0;width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:18px;line-height:1;z-index:2}
+.acu-modal-body{padding:8px 18px 22px}
+.acu-link{cursor:pointer;text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px}
+.acu-link:hover{filter:brightness(.94)}
 </style>
 </head>
 <body>
+<div class="acu-modal" id="acuModal" role="dialog" aria-modal="true" aria-label="経穴の詳細">
+  <div class="acu-modal-inner">
+    <button class="acu-modal-close" id="acuModalClose" aria-label="閉じる">×</button>
+    <div class="acu-modal-body" id="acuModalBody"></div>
+  </div>
+</div>
 <div class="wrap">
 <header>
-  <h1>東洋医学 弁証支援アプリ</h1>
-  <p class="lead">問診 → 症状入力 → 弁証鑑別 → 治療穴 → 徒手検査 → カルテ保存・検索</p>
+  <h1>東洋医学 弁証・選穴支援アプリ</h1>
+  <p class="lead">経穴検索（主治症⇄経穴）／ 問診 → 症状 → 弁証 → 治療穴 → 徒手検査 → カルテ</p>
   <div class="ver-row">
     <button class="btn-ghost mini" id="openEditBtn" onclick="openEditor()">⚙ データ編集・表示設定</button>
     <button class="btn-ghost mini" onclick="window.open('./manual.html','_blank')">📖 使用説明書</button>
@@ -322,15 +492,85 @@
 </div>
 
 <div class="tabs">
-  <div class="tab active" data-name="intake"><span class="n">1</span>問診</div>
-  <div class="tab" data-name="symptom"><span class="n">2</span>症状</div>
-  <div class="tab" data-name="test"><span class="n">3</span>徒手検査</div>
-  <div class="tab" data-name="diag"><span class="n">4</span>弁証</div>
-  <div class="tab" data-name="chart"><span class="n">5</span>カルテ</div>
+  <div class="tab active" data-name="acu_fwd"><span class="n">1</span>主治症→経穴</div>
+  <div class="tab" data-name="acu_rev"><span class="n">2</span>経穴名→主治症</div>
+  <div class="tabdiv" aria-hidden="true"></div>
+  <div class="tab" data-name="intake"><span class="n">3</span>問診</div>
+  <div class="tab" data-name="symptom"><span class="n">4</span>症状</div>
+  <div class="tab" data-name="test"><span class="n">5</span>徒手検査</div>
+  <div class="tab" data-name="diag"><span class="n">6</span>弁証</div>
+  <div class="tab" data-name="chart"><span class="n">7</span>カルテ</div>
 </div>
-
 <!-- ============ STEP 1 問診 ============ -->
-<section class="show" id="sec0" data-name="intake">
+<section class="show acu-scope" id="sec_acu_fwd" data-name="acu_fwd">
+  <div class="wrap"><div class="pane" id="pane-fwd">
+  <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+    <button id="acu-import" title="経穴データを取り込む / 更新する" style="border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer">📥 経穴データ取り込み</button>
+  </div>
+  <div class="search-card">
+    <div class="lbl">症状・主治症を入力（複数追加可）</div>
+    <div class="inputrow">
+      <input type="text" id="q" placeholder="例：頭痛、不眠、腰痛 …" autocomplete="off">
+      <button class="btn" id="add">追加</button>
+    </div>
+    <div class="terms" id="terms"></div>
+
+    <div class="opts">
+      <div class="opt-row">
+        <span>条件：</span>
+        <div class="seg" id="mode">
+          <button data-m="and" class="on">すべて含む (AND)</button>
+          <button data-m="or">いずれか (OR)</button>
+        </div>
+        <button class="btn ghost" id="clear" style="margin-left:auto">クリア</button>
+      </div>
+      <details class="srcfilter">
+        <summary>出典で絞り込む</summary>
+        <div class="srcgrid" id="srcgrid"></div>
+      </details>
+    </div>
+
+    <div class="suggest">
+      <div class="lbl">よく検索される症状</div>
+      <div class="chips" id="chips"></div>
+    </div>
+  </div>
+
+  <div class="summary" id="summary" style="display:none">
+    <div class="cnt">該当 <b id="cnt">0</b> 穴</div>
+    <div class="note" id="note"></div>
+  </div>
+
+  <div id="results"></div>
+  </div><!-- /pane-fwd -->
+
+  <!-- ===== 逆引き（経穴名→主治症）===== -->
+  </div>
+</section>
+<section class="acu-scope" id="sec_acu_rev" data-name="acu_rev">
+  <div class="wrap"><div class="pane" id="pane-rev">
+    <div class="search-card">
+      <div class="lbl">経穴名・読みで検索（漢字／ふりがな・部分一致）</div>
+      <div class="inputrow">
+        <input type="text" id="rq" placeholder="例：合谷／ごうこく、足三里／あしさんり …" autocomplete="off">
+        <button class="btn ghost" id="rclear">クリア</button>
+      </div>
+      <details class="mer-filter">
+        <summary>経絡で絞り込む</summary>
+        <div class="mergrid" id="mergrid"></div>
+      </details>
+    </div>
+
+    <div class="summary" id="rsummary" style="display:none">
+      <div class="cnt">該当 <b id="rcnt">0</b> 穴</div>
+      <div class="note" id="rnote"></div>
+    </div>
+
+    <div id="rresults"></div>
+  </div><!-- /pane-rev -->
+</div><!-- /wrap --></div>
+</section>
+<section id="sec0" data-name="intake">
   <h2>① 問診表</h2>
   <p class="h2sub">患者情報と主訴を記入してください。患者番号は同一患者の時系列管理に使います。</p>
   <div class="pt-row">
@@ -439,7 +679,7 @@
   <div id="chartList"></div>
 </section>
 
-<footer>東洋医学 弁証支援アプリ ／ 学習・臨床補助用途。診断・治療の最終判断は施術者が行ってください。</footer>
+<footer>東洋医学 弁証・選穴支援アプリ ／ 学習・臨床補助用途。診断・治療の最終判断は施術者が行ってください。</footer>
 </div>
 
 <!-- ============ 使い方モーダル ============ -->
@@ -453,7 +693,10 @@
       <p class="help-note">本アプリは学習・臨床補助のための<b>鑑別支援ツール</b>です。表示される弁証・治療穴・検査は候補であり、確定診断ではありません。最終的な判断は施術者ご自身が行ってください。</p>
 
       <h3>全体の流れ</h3>
-      <p>上部のタブを左から順に進めます。<b>① 問診 → ② 症状 → ③ 徒手検査 → ④ 弁証 → ⑤ カルテ</b>。各タブのボタンで前後に移動できます。</p>
+      <p>上部のタブは「経穴検索」と「診察フロー」に分かれています。<b>① 主治症→経穴　② 経穴名→主治症</b>｜<b>③ 問診 → ④ 症状 → ⑤ 徒手検査 → ⑥ 弁証 → ⑦ カルテ</b>。各タブは自由に行き来でき、入力したデータはタブを移動しても保持されます。</p>
+
+      <h3>① 主治症→経穴／② 経穴名→主治症（経穴検索）</h3>
+      <p>症状（主治症）から経穴を探す、または経穴名・読み（ふりがな）から主治症を調べます。使う前に「📥 経穴データ取り込み」から acupoints.json を取り込んでください（端末内に保存、オフライン可）。⑥弁証の治療穴をタップすると、同じデータからその経穴の主治症をポップアップ表示します。</p>
 
       <h3>① 問診</h3>
       <p>患者番号・氏名・来院日・予約/来院時間・主訴などを入力します。</p>
@@ -530,6 +773,10 @@ const SYMPTOM_GROUPS = [
     ["fever_pm","夕方〜夜の微熱"],["sweat_spont","じっとしていても汗が出る(自汗)"],
     ["sweat_night","寝汗(盗汗)"],["thirst_cold","冷たい物を欲しがる・口渇強い"],
     ["nothirst","口は渇かない・温かい物を好む"],["heavy","体が重だるい"],
+    ["chills_fever","悪寒と発熱が同時にある"],["aversion_wind","風に当たると寒い・風を嫌う"],
+    ["bodyache","体のふしぶしが痛む"],["cold_limbs","手足が冷たい(四肢厥冷)"],
+    ["hot_palms","手のひら・足の裏のほてり"],["nightsweat_palm","寝汗＋手足のほてり"],
+    ["numbness","手足のしびれ・ぴくつき"],
   ]},
   {g:"精神・睡眠", items:[
     ["insomnia","寝つけない・眠りが浅い"],["dream","夢が多い"],
@@ -541,6 +788,7 @@ const SYMPTOM_GROUPS = [
     ["headache","頭痛"],["eye_dry","目の乾き・かすみ"],
     ["eye_red","目の充血"],["facepale","顔色が白い・つやがない"],
     ["facered","顔が赤い"],["tinnitus","耳鳴り"],
+    ["cheek_red","頬だけ赤い(午後)"],["jaundice","黄疸・皮膚や白目が黄色い"],
   ]},
   {g:"消化・腹部", items:[
     ["appetite_lo","食欲不振"],["bloat","お腹の張り・ゲップ"],
@@ -548,20 +796,26 @@ const SYMPTOM_GROUPS = [
     ["nausea","吐き気・むかつき"],["epi_cold","みぞおち・お腹を温めると楽"],
     ["sticky_mouth","口の中が粘る・甘い"],
     ["adds_x8","空腹感が強い(消穀善飢)"],
+    ["thirst_dry","口やのどが乾く(乾燥感)"],["bitter_mouth","口が苦い"],
+    ["prolapse","内臓下垂感・脱肛・慢性の下痢"],
   ]},
   {g:"呼吸・胸", items:[
     ["cough","咳"],["phlegm","痰が多い"],
     ["sob","息切れ・呼吸が浅い"],["chest_op","胸が詰まる・脇が張る"],
+    ["nasal","鼻づまり・鼻水"],["sorethroat","のどの痛み・腫れ"],
+    ["hypochondriac","脇腹(季肋部)の張り・痛み"],
   ]},
   {g:"泌尿・生殖・腰", items:[
     ["urine_freq","頻尿・夜間尿"],["urine_clear","尿が薄く量が多い"],
     ["urine_yellow","尿が濃い・少ない・残尿感"],["lowback_weak","腰や膝がだるい・力が入らない"],
     ["lowback_cold","腰が冷えて痛む"],["libido_lo","性欲減退・むくみ"],
+    ["edema","むくみ(特に下半身)"],["scanty_urine","尿が出にくい・量が少ない"],
   ]},
   {g:"血・婦人", items:[
     ["blood_dark","経血やあざが暗紫・塊"],["fixed_pain","刺すような固定痛"],
     ["dysmen","生理痛が強い"],["palered","唇・爪が白い"],
     ["skin_dry","肌や髪が乾燥・つやがない"],
+    ["spontaneous_bleed","出血しやすい(歯ぐき・皮下・不正出血)"],
   ]},
   {g:"舌・脈(分かれば)", items:[
     ["tongue_pale","舌が淡い"],["tongue_red","舌が赤い"],
@@ -592,11 +846,11 @@ const SYMPTOM_GROUPS = [
 
 const PATTERNS = [
   {name:"気虚証", cat:"気血津液",
-   sym:{fatigue:3,lowvoice:2,sob:2,sweat_spont:2,appetite_lo:1,facepale:1,pulse_weak:2,tongue_pale:1},
+   sym:{fatigue:3,lowvoice:2,sob:2,sweat_spont:2,appetite_lo:1,facepale:1,pulse_weak:2,tongue_pale:1,spontaneous_bleed:1,prolapse:1},
    princ:"補気・健脾。気を補い臓腑の機能を高める。",
    tx:[{p:"足三里",m:"bu"},{p:"気海",m:"bu"},{p:"関元",m:"bu"},{p:"脾兪",m:"bu"},{p:"膏肓",m:"bu"}]},
   {name:"血虚証", cat:"気血津液",
-   sym:{palered:3,skin_dry:2,dizziness:2,palpitation:2,insomnia:1,forget:1,eye_dry:1,tongue_pale:2,pulse_weak:1},
+   sym:{palered:3,skin_dry:2,dizziness:2,palpitation:2,insomnia:1,forget:1,eye_dry:1,tongue_pale:2,pulse_weak:1,numbness:1},
    princ:"補血・養血。血を補い心肝を養う。",
    tx:[{p:"血海",m:"bu"},{p:"三陰交",m:"bu"},{p:"膈兪",m:"bu"},{p:"肝兪",m:"bu"},{p:"脾兪",m:"bu"}]},
   {name:"気滞証(肝気鬱結)", cat:"気血津液",
@@ -608,15 +862,15 @@ const PATTERNS = [
    princ:"活血化瘀。滞った血を巡らせ瘀血を除く。",
    tx:[{p:"血海",m:"sha"},{p:"膈兪",m:"sha"},{p:"三陰交",m:"hei"},{p:"合谷",m:"sha"},{p:"太衝",m:"sha"}]},
   {name:"陽虚証", cat:"八綱",
-   sym:{cold:3,lowback_cold:2,urine_clear:2,loose:2,facepale:1,libido_lo:2,epi_cold:2,nothirst:1,pulse_weak:2,tongue_pale:1},
+   sym:{cold:3,lowback_cold:2,urine_clear:2,loose:2,facepale:1,libido_lo:2,epi_cold:2,nothirst:1,pulse_weak:2,tongue_pale:1,cold_limbs:2,edema:1},
    princ:"温陽・補腎。陽気を温め補い冷えを除く。灸を主体に。",
    tx:[{p:"関元",m:"bu"},{p:"命門",m:"bu"},{p:"腎兪",m:"bu"},{p:"気海",m:"bu"},{p:"足三里",m:"bu"}]},
   {name:"陰虚証", cat:"八綱",
-   sym:{fever_pm:3,sweat_night:3,heat:2,eye_dry:1,thirst_cold:1,coat_none:2,tongue_red:2,pulse_rapid:1,insomnia:1,tinnitus:1},
+   sym:{fever_pm:3,sweat_night:3,heat:2,eye_dry:1,thirst_cold:1,coat_none:2,tongue_red:2,pulse_rapid:1,insomnia:1,tinnitus:1,hot_palms:2,cheek_red:1,thirst_dry:1},
    princ:"滋陰・清虚熱。陰液を補い虚熱を鎮める。",
    tx:[{p:"三陰交",m:"bu"},{p:"太渓",m:"bu"},{p:"照海",m:"bu"},{p:"復溜",m:"bu"},{p:"腎兪",m:"bu"}]},
   {name:"実熱証", cat:"八綱",
-   sym:{heat:2,facered:2,eye_red:2,thirst_cold:2,constip:2,urine_yellow:2,coat_yellow:2,tongue_red:2,pulse_rapid:2,irritable:1},
+   sym:{heat:2,facered:2,eye_red:2,thirst_cold:2,constip:2,urine_yellow:2,coat_yellow:2,tongue_red:2,pulse_rapid:2,irritable:1,sorethroat:1,thirst_dry:1},
    princ:"清熱瀉火。熱邪を清し瀉す。",
    tx:[{p:"曲池",m:"sha"},{p:"合谷",m:"sha"},{p:"大椎",m:"sha"},{p:"内庭",m:"sha"},{p:"少商",m:"sha"}]},
   {name:"痰湿証(痰飲)", cat:"気血津液",
@@ -624,19 +878,19 @@ const PATTERNS = [
    princ:"化痰除湿・健脾。痰湿を取り除き脾を健やかに。",
    tx:[{p:"豊隆",m:"sha"},{p:"中脘",m:"hei"},{p:"陰陵泉",m:"sha"},{p:"足三里",m:"hei"},{p:"脾兪",m:"bu"}]},
   {name:"脾気虚(脾胃虚弱)", cat:"臓腑",
-   sym:{appetite_lo:3,loose:3,fatigue:2,bloat:2,facepale:1,heavy:1,lowvoice:1,tongue_pale:1,pulse_weak:1},
+   sym:{appetite_lo:3,loose:3,fatigue:2,bloat:2,facepale:1,heavy:1,lowvoice:1,tongue_pale:1,pulse_weak:1,prolapse:2,spontaneous_bleed:1,edema:1},
    princ:"健脾益気。脾の運化を高め気を補う。",
    tx:[{p:"足三里",m:"bu"},{p:"脾兪",m:"bu"},{p:"中脘",m:"bu"},{p:"章門",m:"bu"},{p:"胃兪",m:"bu"}]},
   {name:"腎陽虚", cat:"臓腑",
-   sym:{lowback_cold:3,lowback_weak:2,urine_freq:2,urine_clear:2,libido_lo:2,cold:2,loose:1,pulse_weak:1,tongue_pale:1},
+   sym:{lowback_cold:3,lowback_weak:2,urine_freq:2,urine_clear:2,libido_lo:2,cold:2,loose:1,pulse_weak:1,tongue_pale:1,cold_limbs:2,edema:2},
    princ:"温補腎陽。腎の陽気を温め補う。灸主体。",
    tx:[{p:"命門",m:"bu"},{p:"腎兪",m:"bu"},{p:"関元",m:"bu"},{p:"太渓",m:"bu"},{p:"気海",m:"bu"}]},
   {name:"腎陰虚", cat:"臓腑",
-   sym:{lowback_weak:2,tinnitus:2,fever_pm:2,sweat_night:2,dizziness:1,eye_dry:1,coat_none:2,tongue_red:1,pulse_rapid:1,forget:1},
+   sym:{lowback_weak:2,tinnitus:2,fever_pm:2,sweat_night:2,dizziness:1,eye_dry:1,coat_none:2,tongue_red:1,pulse_rapid:1,forget:1,hot_palms:2,nightsweat_palm:1},
    princ:"滋補腎陰。腎陰を養い虚火を鎮める。",
    tx:[{p:"太渓",m:"bu"},{p:"腎兪",m:"bu"},{p:"三陰交",m:"bu"},{p:"照海",m:"bu"},{p:"志室",m:"bu"}]},
   {name:"肝陽上亢", cat:"臓腑",
-   sym:{headache:2,dizziness:2,irritable:2,eye_red:1,facered:1,tinnitus:1,pulse_wiry:2,tongue_red:1,insomnia:1},
+   sym:{headache:2,dizziness:2,irritable:2,eye_red:1,facered:1,tinnitus:1,pulse_wiry:2,tongue_red:1,insomnia:1,numbness:1},
    princ:"平肝潜陽。上亢した肝陽を鎮め降ろす。",
    tx:[{p:"太衝",m:"sha"},{p:"風池",m:"sha"},{p:"行間",m:"sha"},{p:"太渓",m:"bu"},{p:"百会",m:"hei"}]},
   {name:"心血虚(心神不安)", cat:"臓腑",
@@ -648,7 +902,7 @@ const PATTERNS = [
    princ:"補益肺気。肺気を補い衛気を固める。",
    tx:[{p:"肺兪",m:"bu"},{p:"太淵",m:"bu"},{p:"足三里",m:"bu"},{p:"気海",m:"bu"},{p:"膏肓",m:"bu"}]},
   {name:"肝血虚", cat:"臓腑",
-   sym:{eye_dry:2,palered:2,dizziness:2,pain_leg_numb:1,insomnia:1,dysmen:2,facepale:1},
+   sym:{eye_dry:2,palered:2,dizziness:2,pain_leg_numb:1,insomnia:1,dysmen:2,facepale:1,numbness:2},
    princ:"補血養肝。肝血を補い筋・目を養う。",
    tx:[{p:"肝兪",m:"bu"},{p:"脾兪",m:"bu"},{p:"三陰交",m:"bu"},{p:"太衝",m:"bu"},{p:"血海",m:"bu"}]},
   {name:"心気虚", cat:"臓腑",
@@ -660,7 +914,7 @@ const PATTERNS = [
    princ:"温通心陽。心陽を温め血行を促す。",
    tx:[{p:"心兪",m:"bu"},{p:"厥陰兪",m:"bu"},{p:"関元",m:"bu"},{p:"内関",m:"bu"},{p:"膻中",m:"bu"}]},
   {name:"肺陰虚", cat:"臓腑",
-   sym:{cough:3,phlegm:2,thirst_cold:2,sweat_night:2,fever_pm:1},
+   sym:{cough:3,phlegm:2,thirst_cold:2,sweat_night:2,fever_pm:1,thirst_dry:2,cheek_red:1},
    princ:"養陰潤肺。肺陰を補い乾燥を潤す。",
    tx:[{p:"肺兪",m:"bu"},{p:"太淵",m:"bu"},{p:"膏肓",m:"bu"},{p:"照海",m:"bu"},{p:"太渓",m:"bu"}]},
   {name:"脾陽虚", cat:"臓腑",
@@ -668,15 +922,15 @@ const PATTERNS = [
    princ:"温中健脾。脾陽を温め運化を助ける。",
    tx:[{p:"脾兪",m:"bu"},{p:"胃兪",m:"bu"},{p:"中脘",m:"bu"},{p:"足三里",m:"bu"},{p:"関元",m:"bu"}]},
   {name:"胃陰虚", cat:"臓腑",
-   sym:{adds_x8:2,thirst_cold:2,bloat:1,constip:1,tongue_red:2},
+   sym:{adds_x8:2,thirst_cold:2,bloat:1,constip:1,tongue_red:2,thirst_dry:2},
    princ:"養胃生津。胃陰を補い乾燥を潤す。",
    tx:[{p:"胃兪",m:"bu"},{p:"中脘",m:"bu"},{p:"三陰交",m:"bu"},{p:"内庭",m:"sha"},{p:"太渓",m:"bu"}]},
   {name:"肝胆湿熱", cat:"臓腑",
-   sym:{chest_op:2,irritable:2,urine_yellow:2,urine_yellow:1,sticky_mouth:1,coat_yellow:2},
+   sym:{chest_op:2,irritable:2,urine_yellow:2,urine_yellow:1,sticky_mouth:1,coat_yellow:2,jaundice:2,bitter_mouth:2,hypochondriac:2},
    princ:"清利肝胆湿熱。湿熱を除く。",
    tx:[{p:"肝兪",m:"sha"},{p:"胆兪",m:"sha"},{p:"陽陵泉",m:"sha"},{p:"太衝",m:"sha"},{p:"陰陵泉",m:"sha"}]},
   {name:"大腸湿熱", cat:"臓腑",
-   sym:{epi_cold:2,loose:2,urine_yellow:2,heat:1,coat_yellow:2},
+   sym:{epi_cold:2,loose:2,urine_yellow:2,heat:1,coat_yellow:2,scanty_urine:1},
    princ:"清熱利湿。腸の湿熱を除く。",
    tx:[{p:"天枢",m:"sha"},{p:"上巨虚",m:"sha"},{p:"合谷",m:"sha"},{p:"曲池",m:"sha"},{p:"陰陵泉",m:"sha"}]},
   {name:"寒湿困脾", cat:"気血津液",
@@ -684,9 +938,74 @@ const PATTERNS = [
    princ:"温化寒湿・健脾。",
    tx:[{p:"脾兪",m:"bu"},{p:"中脘",m:"bu"},{p:"足三里",m:"bu"},{p:"陰陵泉",m:"sha"},{p:"豊隆",m:"sha"}]},
   {name:"気血両虚", cat:"気血津液",
-   sym:{fatigue:3,sob:2,facepale:2,palpitation:2,dizziness:2,insomnia:1},
+   sym:{fatigue:3,sob:2,facepale:2,palpitation:2,dizziness:2,insomnia:1,numbness:1},
    princ:"気血双補。気と血をともに補う。",
    tx:[{p:"気海",m:"bu"},{p:"関元",m:"bu"},{p:"足三里",m:"bu"},{p:"三陰交",m:"bu"},{p:"脾兪",m:"bu"}]},
+  {name:"風寒表証", cat:"八綱",
+   sym:{chills_fever:3,aversion_wind:2,cold:2,nasal:2,bodyache:2,cough:1,nothirst:1,coat_thick:1},
+   princ:"辛温解表。体表の風寒を発散する。",
+   tx:[{p:"風池",m:"sha"},{p:"風門",m:"sha"},{p:"列缺",m:"sha"},{p:"合谷",m:"sha"},{p:"大椎",m:"hei"}]},
+  {name:"風熱表証", cat:"八綱",
+   sym:{chills_fever:2,sorethroat:3,heat:2,thirst_dry:2,nasal:1,cough:1,facered:1,pulse_rapid:2,coat_yellow:1},
+   princ:"辛涼解表。体表の風熱を清し発散する。",
+   tx:[{p:"大椎",m:"sha"},{p:"曲池",m:"sha"},{p:"合谷",m:"sha"},{p:"少商",m:"sha"},{p:"魚際",m:"sha"}]},
+  {name:"心脾両虚", cat:"臓腑",
+   sym:{insomnia:3,palpitation:2,dream:2,forget:2,appetite_lo:2,fatigue:2,tongue_pale:2,pulse_weak:2,facepale:1,loose:1,palered:1},
+   princ:"健脾養心・補益気血。脾と心を同時に補う。",
+   tx:[{p:"心兪",m:"bu"},{p:"脾兪",m:"bu"},{p:"足三里",m:"bu"},{p:"三陰交",m:"bu"},{p:"神門",m:"bu"},{p:"膈兪",m:"bu"}]},
+  {name:"肝腎陰虚", cat:"臓腑",
+   sym:{dizziness:2,tinnitus:2,eye_dry:2,lowback_weak:2,fever_pm:2,nightsweat_palm:2,tongue_red:2,coat_none:2,hot_palms:1,insomnia:1,pulse_wiry:1},
+   princ:"滋補肝腎。肝腎の陰を養い虚熱を鎮める。",
+   tx:[{p:"太渓",m:"bu"},{p:"太衝",m:"bu"},{p:"三陰交",m:"bu"},{p:"腎兪",m:"bu"},{p:"肝兪",m:"bu"},{p:"照海",m:"bu"}]},
+  {name:"心腎不交", cat:"臓腑",
+   sym:{insomnia:3,dream:2,palpitation:2,forget:2,hot_palms:2,tongue_red:2,tinnitus:1,lowback_weak:1,fever_pm:1,pulse_rapid:1},
+   princ:"交通心腎・滋陰降火。心火と腎水のバランスを取る。",
+   tx:[{p:"神門",m:"sha"},{p:"太渓",m:"bu"},{p:"照海",m:"bu"},{p:"心兪",m:"hei"},{p:"腎兪",m:"bu"},{p:"三陰交",m:"bu"}]},
+  {name:"肺腎陰虚", cat:"臓腑",
+   sym:{cough:2,thirst_dry:2,fever_pm:2,sweat_night:2,tongue_red:2,coat_none:2,lowback_weak:1,tinnitus:1,cheek_red:1,pulse_rapid:1},
+   princ:"滋養肺腎。肺腎の陰を補い乾きと虚熱を鎮める。",
+   tx:[{p:"太渓",m:"bu"},{p:"肺兪",m:"bu"},{p:"膏肓",m:"bu"},{p:"照海",m:"bu"},{p:"尺沢",m:"hei"},{p:"腎兪",m:"bu"}]},
+  {name:"脾腎陽虚", cat:"臓腑",
+   sym:{loose:3,cold:2,cold_limbs:2,lowback_cold:2,edema:2,urine_clear:2,fatigue:2,tongue_pale:2,pulse_weak:2,appetite_lo:1},
+   princ:"温補脾腎。脾と腎の陽気を温め補う。灸主体。",
+   tx:[{p:"脾兪",m:"bu"},{p:"腎兪",m:"bu"},{p:"命門",m:"bu"},{p:"関元",m:"bu"},{p:"足三里",m:"bu"},{p:"気海",m:"bu"}]},
+  {name:"肝火上炎", cat:"臓腑",
+   sym:{irritable:3,headache:2,eye_red:2,bitter_mouth:2,tinnitus:2,tongue_red:2,pulse_wiry:2,facered:1,constip:1,insomnia:1,coat_yellow:1},
+   princ:"清肝瀉火。亢ぶった肝火を清し降ろす。",
+   tx:[{p:"太衝",m:"sha"},{p:"行間",m:"sha"},{p:"風池",m:"sha"},{p:"陽陵泉",m:"sha"},{p:"侠渓",m:"sha"}]},
+  {name:"肝風内動", cat:"臓腑",
+   sym:{dizziness:3,numbness:3,pulse_wiry:3,headache:2,irritable:1,tinnitus:1,tongue_red:1},
+   princ:"平肝熄風。内風を鎮めけいれん・震えを止める。",
+   tx:[{p:"太衝",m:"sha"},{p:"風池",m:"sha"},{p:"百会",m:"hei"},{p:"合谷",m:"sha"},{p:"陽陵泉",m:"sha"},{p:"太渓",m:"bu"}]},
+  {name:"胃気虚(胃気不足)", cat:"臓腑",
+   sym:{appetite_lo:3,bloat:2,fatigue:2,pulse_weak:2,nausea:1,lowvoice:1,epi_cold:1,tongue_pale:1},
+   princ:"健胃益気。胃の働きを補い受納を助ける。",
+   tx:[{p:"中脘",m:"bu"},{p:"足三里",m:"bu"},{p:"胃兪",m:"bu"},{p:"脾兪",m:"bu"},{p:"内関",m:"hei"}]},
+  {name:"胃熱(胃火)", cat:"臓腑",
+   sym:{adds_x8:3,thirst_cold:2,constip:2,tongue_red:2,coat_yellow:2,pulse_rapid:2,bitter_mouth:1,facered:1,heat:1},
+   princ:"清胃瀉火。胃の熱を清し降ろす。",
+   tx:[{p:"内庭",m:"sha"},{p:"足三里",m:"sha"},{p:"曲池",m:"sha"},{p:"合谷",m:"sha"},{p:"中脘",m:"hei"}]},
+  {name:"膀胱湿熱", cat:"臓腑",
+   sym:{urine_yellow:3,scanty_urine:2,urine_freq:2,coat_yellow:2,heat:1,thirst_dry:1,tongue_red:1,pulse_rapid:1},
+   princ:"清熱利湿・通淋。下焦の湿熱を清し排尿を通す。",
+   tx:[{p:"中極",m:"sha"},{p:"膀胱兪",m:"sha"},{p:"三陰交",m:"sha"},{p:"陰陵泉",m:"sha"},{p:"委陽",m:"sha"}]},
+  {name:"腸燥便秘(津枯)", cat:"気血津液",
+   sym:{constip:3,thirst_dry:2,skin_dry:1,coat_none:1,tongue_red:1,pulse_weak:1},
+   princ:"潤腸通便。腸を潤して便通を促す。",
+   tx:[{p:"天枢",m:"hei"},{p:"支溝",m:"sha"},{p:"照海",m:"bu"},{p:"足三里",m:"hei"},{p:"大腸兪",m:"hei"}]},
+  {name:"気不摂血", cat:"気血津液",
+   sym:{spontaneous_bleed:3,fatigue:2,facepale:2,tongue_pale:2,pulse_weak:2,lowvoice:1,palpitation:1,sob:1},
+   princ:"補気摂血。気を補い出血を止める。",
+   tx:[{p:"足三里",m:"bu"},{p:"脾兪",m:"bu"},{p:"膈兪",m:"bu"},{p:"隠白",m:"bu"},{p:"気海",m:"bu"}]},
+  {name:"中気下陥(気陥)", cat:"臓腑",
+   sym:{prolapse:3,fatigue:3,lowvoice:2,pulse_weak:2,appetite_lo:1,loose:1,facepale:1,tongue_pale:1},
+   princ:"補中益気・昇提。中気を補い下垂を引き上げる。灸併用。",
+   tx:[{p:"百会",m:"bu"},{p:"気海",m:"bu"},{p:"足三里",m:"bu"},{p:"脾兪",m:"bu"},{p:"関元",m:"bu"}]},
+  {name:"肝胆湿熱(黄疸)", cat:"臓腑",
+   sym:{jaundice:3,hypochondriac:2,bitter_mouth:2,urine_yellow:2,coat_yellow:2,coat_thick:2,nausea:1,heat:1,tongue_red:1,pulse_wiry:1},
+   princ:"清利肝胆湿熱。肝胆の湿熱を清し黄疸を退ける。",
+   tx:[{p:"陽陵泉",m:"sha"},{p:"太衝",m:"sha"},{p:"期門",m:"sha"},{p:"胆兪",m:"sha"},{p:"陰陵泉",m:"sha"},{p:"至陽",m:"sha"}]}
+
 ];
 
 const MERIDIAN = {
@@ -1590,6 +1909,25 @@ const SYMPTOM_KEYWORDS = {
   pain_knee:["膝が痛","ひざが痛","膝の痛"],
   pain_ankle:["足首が痛","足が痛","足部","くるぶし"],
   pain_leg_numb:["下肢のしびれ","足がしびれ","放散痛","脚がしびれ","坐骨"],
+  // ▼ 追加証で使う新症状のキーワード
+  chills_fever:["悪寒発熱","ぞくぞくして熱","寒気と熱","悪寒と熱"],
+  aversion_wind:["悪風","風に当たると寒","風が当たると","風を嫌"],
+  nasal:["鼻水","鼻づまり","鼻が詰ま","はなみず","鼻汁"],
+  sorethroat:["のどが痛","咽頭痛","喉が痛","咽が痛","のどの腫れ","扁桃"],
+  bodyache:["ふしぶしが痛","体が痛","身体痛","関節が痛む","体の節々"],
+  thirst_dry:["口が乾","のどが乾","口やのどが乾","乾燥感","口渇(乾"],
+  hypochondriac:["脇腹","季肋","脇が張","脇が痛","わき腹"],
+  jaundice:["黄疸","白目が黄","皮膚が黄","体が黄色"],
+  bitter_mouth:["口が苦","口苦","にがい"],
+  numbness:["しびれ","痺れ","ぴくつき","つっぱる","けいれん","痙攣"],
+  hot_palms:["手のひらがほて","足の裏がほて","五心煩熱","手足がほてる"],
+  cheek_red:["頬が赤","ほおが赤","顴紅","午後に赤"],
+  cold_limbs:["手足が冷","四肢が冷","手足の冷え","四肢厥冷","末端が冷"],
+  edema:["むくみ","浮腫","下肢のむくみ","足のむくみ","むくむ"],
+  scanty_urine:["尿が出にく","尿量が少","排尿困難","小便不利","尿が少な"],
+  spontaneous_bleed:["出血しやす","歯ぐきから血","あざができ","不正出血","皮下出血","血が止まりにく"],
+  prolapse:["下垂","脱肛","内臓が下がる","慢性の下痢","脱出"],
+  nightsweat_palm:["寝汗とほてり","盗汗","寝汗が出てほて"],
 };
 // 現在の優先症状キー集合（buildSymptomsで参照）
 let PRIORITY_KEYS = new Set();
@@ -1781,7 +2119,7 @@ function analyze(){
     area.innerHTML=top.map((x,i)=>{
       const pct=Math.round(x.ratio*100), rel=Math.round(x.score/maxScore*100);
       const hits=x.hit.map(k=>LABELMAP[k]).join('・');
-      const acu=x.p.tx.map(t=>`<span class="acu">${t.p}<span class="mode m-${t.m}">${MODE_LABEL[t.m]}</span></span>`).join('');
+      const acu=x.p.tx.map(t=>`<span class="acu acu-link" data-acu="${esc(t.p)}" role="button" tabindex="0" title="経穴の主治症を見る">${t.p}<span class="mode m-${t.m}">${MODE_LABEL[t.m]}</span></span>`).join('');
       return `<div class="result-card"><div class="top"><span class="pat-name">${i+1}. ${x.p.name}</span>
         <span class="score">${x.p.cat}弁証 ／ 合致度 ${pct}%</span></div>
         <div class="meter"><i style="width:${rel}%"></i></div>
@@ -1790,7 +2128,7 @@ function analyze(){
     }).join('');
     const merBlocks=[...checked].filter(k=>MERIDIAN[k]).map(k=>{
       const m=MERIDIAN[k];
-      const acu=m.tx.map(t=>`<span class="acu">${t.p}<span class="mode m-${t.m}">${MODE_LABEL[t.m]}</span></span>`).join('');
+      const acu=m.tx.map(t=>`<span class="acu acu-link" data-acu="${esc(t.p)}" role="button" tabindex="0" title="経穴の主治症を見る">${t.p}<span class="mode m-${t.m}">${MODE_LABEL[t.m]}</span></span>`).join('');
       return `<div class="result-card" style="border-left:4px solid var(--accent2)">
         <div class="top"><span class="pat-name">経絡弁証：${LABELMAP[k]}</span><span class="score">関連経絡</span></div>
         <div class="matched">${m.m}</div><div class="tx">${acu}</div></div>`;
@@ -2393,6 +2731,11 @@ function go(target){
   document.querySelectorAll('section').forEach(s=>s.classList.toggle('show',s.dataset.name===name));
   if(name==='chart')renderCharts();
   if(name==='intake')refreshDatalists();
+  // 検索タブ：初回表示時に選穴モジュールを初期化（データ読み込み・描画）
+  if((name==='acu_fwd' || name==='acu_rev') && window.AcuModule && !window._acuInited){
+    window._acuInited = true;
+    AcuModule.init();
+  }
   if(name==='symptom' && PRIORITY_KEYS.size===0){
     // 症状タブを初めて開いたとき、問診に入力があれば優先症状を反映
     const hasText = ((document.getElementById('q_chief')?.value||'') + (document.getElementById('q_hist')?.value||'')).trim();
@@ -2506,6 +2849,516 @@ if('serviceWorker' in navigator){
 })();
 
 initVersion();
+
+/* ===== 統合：選穴支援モジュール（名前空間隔離）===== */
+window.AcuModule = (function(){
+
+// ── 文字サイズ調整（A-/A+）：ルートfont-sizeを倍率変更し localStorage に保存 ──
+// 出典は取り込んだデータから自動生成する（13出典など可変）。初期は空。
+let SOURCES=[];
+// 出典ではない固定列（これら以外を「出典」とみなす）
+//  ※「検索キーワード（※検索緩和用　キーワード）」は出典チップの1つとして扱うため、ここには入れない。
+const NON_SOURCE_KEYS=new Set([
+  "経絡名","WHO表記","経穴名","ふりがな","取穴部位①","取穴部位②","取穴部位",
+  // 旧スキーマ互換
+  "meridian","who","name","reading","location","loc1","loc2","sources"
+]);
+// 出典名の表示リネーム（短縮名 → 画面表示名）。
+//  CSVカラム「※検索緩和用　キーワード」は、チップ・結果とも「検索キーワード」と表示する。
+const SOURCE_RENAME={
+  "※検索緩和用　キーワード":"検索キーワード",
+  "※検索緩和用 キーワード":"検索キーワード", // 半角スペース版も許容
+  "検索キーワード":"検索キーワード"
+};
+function displaySourceName(shortName){
+  return SOURCE_RENAME[shortName] || shortName;
+}
+const POPULAR=["頭痛","腰痛","不眠","便秘","下痢","めまい","肩こり","咳嗽","喘息","胃痛","坐骨神経痛","耳鳴り","三叉神経痛","婦人病","リウマチ"];
+let DATA=[], terms=[], mode="and", srcOn=new Set();
+
+const $=s=>document.querySelector(s);
+function toast(m){const t=$("#toast");t.textContent=m;t.classList.add("show");clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove("show"),1800);}
+
+// ---- データ正規化 ----
+//  CSV由来の日本語キーJSON（経絡名/WHO表記/経穴名/ふりがな/取穴部位①②/各出典名・検索キーワード列）と、
+//  旧スキーマ（meridian/who/name/location/sources{…}/keywords）の両方を、共通の内部モデルに変換する。
+//  内部モデル: { meridian, who, name, reading, loc1, loc2, sources:{出典名:本文} }
+//  ※検索キーワードは sources の1項目（キー「検索キーワード」）として格納する。
+function normalizeRecord(r){
+  if(!r || typeof r!=="object") return null;
+  // 旧スキーマ（sources がオブジェクト）はそのまま活かしつつ欠損を補完
+  if(r.sources && typeof r.sources==="object" && !Array.isArray(r.sources)){
+    const sources=Object.assign({}, r.sources);
+    // 旧スキーマの keywords / 検索キーワード も sources の1項目に取り込む
+    const kw=(r.keywords||r["検索キーワード"]||"").trim();
+    if(kw && !sources["検索キーワード"]) sources["検索キーワード"]=kw;
+    return {
+      meridian: r.meridian||r["経絡名"]||"",
+      who:      r.who||r["WHO表記"]||"",
+      name:     r.name||r["経穴名"]||"",
+      reading:  r.reading||r["ふりがな"]||"",
+      loc1:     r.loc1||r["取穴部位①"]||r.location||r["取穴部位"]||"",
+      loc2:     r.loc2||r["取穴部位②"]||"",
+      sources
+    };
+  }
+  // 新スキーマ（各出典がトップレベル列）：固定列以外を出典として集める
+  //  「※検索緩和用　キーワード」列も出典の1つ（表示名「検索キーワード」）として取り込む。
+  const sources={};
+  for(const k of Object.keys(r)){
+    if(NON_SOURCE_KEYS.has(k)) continue;
+    const v=r[k];
+    if(v==null) continue;
+    const sv=String(v).trim();
+    if(sv) sources[shortSourceName(k)]=sv; // 値が空の出典は載せない
+  }
+  return {
+    meridian: r["経絡名"]||r.meridian||"",
+    who:      r["WHO表記"]||r.who||"",
+    name:     r["経穴名"]||r.name||"",
+    reading:  r["ふりがな"]||r.reading||"",
+    loc1:     r["取穴部位①"]||r.location||r["取穴部位"]||"",
+    loc2:     r["取穴部位②"]||"",
+    sources
+  };
+}
+// 出典の長い列名（例「翁鍼灸治療院（Web)」「代田文誌（沢田健：鍼灸治療基礎学）」）から、
+// 表示用の短い名前（括弧の前まで）を作る。フィルター（出典で絞る）はこの短い名前を使う。
+function shortSourceName(k){
+  const m=String(k).match(/^[^（(]+/);
+  return (m?m[0]:String(k)).trim();
+}
+// 短い名前 → 正式名（カラム名）の対応。検索結果の見出しは正式名で表示する。
+let SOURCE_FULL={};
+function fullSourceName(shortName){
+  return SOURCE_FULL[shortName] || shortName;
+}
+// 出典の列順（CSVの列順）。取り込み時に生データのキーから確定する。
+let SOURCE_ORDER=[];
+function computeSourceOrder(rawArr){
+  const order=[], seen=new Set();
+  SOURCE_FULL={};
+  for(const r of rawArr){
+    if(!r||typeof r!=="object") continue;
+    for(const k of Object.keys(r)){
+      if(NON_SOURCE_KEYS.has(k)) continue;
+      const name=shortSourceName(k);
+      // 正式名（カラム名）を記録。複数行で異なる場合は最初に出たものを優先。
+      if(!(name in SOURCE_FULL)) SOURCE_FULL[name]=String(k).trim();
+      if(!seen.has(name)){ seen.add(name); order.push(name); }
+    }
+  }
+  SOURCE_ORDER=order;
+}
+// 取り込んだ全データから出典一覧を作る。並び順は CSV の列順（SOURCE_ORDER）に従う。
+function buildSources(){
+  // 実際に値が入っている出典だけを、列順で並べる
+  const present=new Set();
+  for(const p of DATA) for(const s of Object.keys(p.sources||{})) present.add(s);
+  const ordered=SOURCE_ORDER.filter(s=>present.has(s));
+  // SOURCE_ORDER に無い出典（旧データ等）は後ろに出現順で追加
+  for(const s of present){ if(!ordered.includes(s)) ordered.push(s); }
+  SOURCES=ordered;
+  const keep=new Set([...srcOn].filter(s=>present.has(s)));
+  srcOn = keep.size ? keep : new Set(ordered);
+}
+
+// ---- localStorage（ブラウザ保管）----
+function saveState(){try{localStorage.setItem("acu_state",JSON.stringify({terms,mode,src:[...srcOn]}));}catch(e){}}
+function loadState(){try{const s=JSON.parse(localStorage.getItem("acu_state")||"null");if(s){terms=s.terms||[];mode=s.mode||"and";if(s.src&&s.src.length)srcOn=new Set(s.src);}}catch(e){}}
+
+// ---- 経穴データの保存：IndexedDB（他アプリと統一・オフライン可）----
+//  検索条件(acu_state)と文字サイズは小さいUI状態なので localStorage のまま。
+//  経穴データ本体だけ IndexedDB に保存する。
+const ACU_DB = "AcupointSearchDB";
+let _acudb = null;
+function acuOpenDB(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(ACU_DB,1);
+    req.onupgradeneeded=(e)=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains("acuData")) db.createObjectStore("acuData",{keyPath:"key"});
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+function acuGet(key){
+  return new Promise((resolve)=>{
+    try{
+      const tx=_acudb.transaction("acuData","readonly");
+      const r=tx.objectStore("acuData").get(key);
+      r.onsuccess=()=>resolve(r.result||null); r.onerror=()=>resolve(null);
+    }catch(e){ resolve(null); }
+  });
+}
+function acuPut(value){
+  return new Promise((resolve,reject)=>{
+    const tx=_acudb.transaction("acuData","readwrite");
+    const r=tx.objectStore("acuData").put(value);
+    r.onsuccess=()=>resolve(); r.onerror=()=>reject(r.error);
+  });
+}
+
+// ---- データ読み込み（端末保存のみ・オフライン可）----
+//  取り込み済みデータ（IndexedDB）から読む。通信はしない。
+//  旧localStorage保存分があれば一度だけ IndexedDB へ移行する。
+async function loadData(){
+  try{
+    if(!_acudb) _acudb = await acuOpenDB();
+    // 端末の保存をできるだけ消えにくくする（対応ブラウザのみ）
+    try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
+
+    let rec = await acuGet("current");
+
+    // 旧localStorage（acu_data）からの移行（初回のみ）
+    if(!rec){
+      try{
+        const legacy=localStorage.getItem("acu_data");
+        if(legacy){
+          const arr=JSON.parse(legacy);
+          if(Array.isArray(arr)&&arr.length){
+            const t=localStorage.getItem("acu_data_time")||new Date().toISOString();
+            rec={key:"current",data:arr,importedAt:t};
+            await acuPut(rec);
+            try{ localStorage.removeItem("acu_data"); localStorage.removeItem("acu_data_time"); }catch(e){}
+          }
+        }
+      }catch(e){}
+    }
+
+    if(rec && Array.isArray(rec.data) && rec.data.length>0){
+      computeSourceOrder(rec.data);
+      DATA=rec.data.map(normalizeRecord).filter(Boolean);
+      buildSources();
+      showVer(rec.importedAt?new Date(rec.importedAt):null);
+      hideImportPrompt();
+      return true;
+    }
+  }catch(e){}
+  // 未取り込み
+  showImportPrompt();
+  return false;
+}
+function showVer(d){
+  const el=$("#ver"); if(!el) return;
+  const n=Array.isArray(DATA)?DATA.length:0;
+  el.textContent=`経穴データ取り込み済み（${n}件）／端末内に保存`;
+}
+
+// ファイル選択で acupoints.json を取り込む
+function importAcuFile(ev){
+  const file=ev&&ev.target&&ev.target.files&&ev.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    try{
+      const json=JSON.parse(reader.result);
+      // acupoints.json は配列。{acupoints:[...]} 形式にも一応対応。
+      const arr=Array.isArray(json)?json:(Array.isArray(json.acupoints)?json.acupoints:null);
+      if(!arr||arr.length===0){
+        alert("経穴データが見つかりませんでした。\nacupoints.json を選択してください。");
+        return;
+      }
+      if(!_acudb) _acudb = await acuOpenDB();
+      try{
+        await acuPut({key:"current",data:arr,importedAt:new Date().toISOString()});
+      }catch(e){ alert("保存に失敗しました: "+e.message); return; }
+      computeSourceOrder(arr);
+      DATA=arr.map(normalizeRecord).filter(Boolean);
+      buildSources();
+      showVer(new Date());
+      hideImportPrompt();
+      renderSrc();
+      renderMer();
+      run();
+      toast(DATA.length+"件の経穴データを取り込みました");
+    }catch(e){
+      alert("ファイルの読み込みに失敗しました: "+e.message);
+    }finally{
+      if(ev&&ev.target)ev.target.value="";
+    }
+  };
+  reader.readAsText(file);
+}
+function triggerAcuImport(){
+  let inp=document.getElementById("acu-import-file");
+  if(!inp){
+    inp=document.createElement("input");
+    inp.type="file"; inp.id="acu-import-file"; inp.accept="application/json,.json";
+    inp.style.display="none"; inp.onchange=importAcuFile;
+    document.body.appendChild(inp);
+  }
+  inp.click();
+}
+function showImportPrompt(){
+  let ov=document.getElementById("acu-import-prompt");
+  if(!ov){
+    ov=document.createElement("div");
+    ov.id="acu-import-prompt";
+    ov.style.cssText="position:fixed;inset:0;z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:32px 24px;background:#f4efe4;font-family:sans-serif;color:#2c3e50;";
+    ov.innerHTML=
+      '<div style="font-size:46px;margin-bottom:14px;">📥</div>'+
+      '<h2 style="margin-bottom:12px;font-size:20px;">経穴データを取り込んでください</h2>'+
+      '<p style="color:#7a8a99;line-height:1.8;max-width:30em;margin-bottom:20px;">'+
+      '初回のみ、配布された <b>acupoints.json</b> を取り込みます。<br>'+
+      '取り込んだデータは端末内に保存され、次回からはオフラインでも使えます。</p>'+
+      '<button id="acu-import-btn" style="border:none;background:#d9820a;color:#fff;font-size:15px;font-weight:700;padding:13px 26px;border-radius:11px;cursor:pointer;">📂 acupoints.json を選ぶ</button>';
+    document.body.appendChild(ov);
+    ov.querySelector("#acu-import-btn").onclick=triggerAcuImport;
+  }
+  ov.style.display="flex";
+}
+function hideImportPrompt(){
+  const ov=document.getElementById("acu-import-prompt");
+  if(ov)ov.style.display="none";
+}
+
+function renderTerms(){
+  $("#terms").innerHTML=terms.map((t,i)=>
+    `<span class="term"><b>${esc(t)}</b><span data-i="${i}">×</span></span>`).join("");
+  $("#terms").querySelectorAll("span[data-i]").forEach(e=>
+    e.onclick=()=>{terms.splice(+e.dataset.i,1);renderTerms();run();saveState();});
+}
+function chipLabel(s){
+  // 検索キーワード列はリネーム名（検索キーワード）、それ以外は正式名（カラム名）を表示
+  return (SOURCE_RENAME[s]) ? SOURCE_RENAME[s] : fullSourceName(s);
+}
+function renderSrc(){
+  $("#srcgrid").innerHTML=SOURCES.map(s=>
+    `<span class="chk ${srcOn.has(s)?"on":""}" data-s="${esc(s)}"><span class="chkbox">${srcOn.has(s)?"✓":""}</span><span class="chklbl">${esc(chipLabel(s))}</span></span>`).join("");
+  $("#srcgrid").querySelectorAll(".chk").forEach(e=>e.onclick=()=>{
+    const s=e.dataset.s; if(srcOn.has(s)){if(srcOn.size>1)srcOn.delete(s);}else srcOn.add(s);
+    renderSrc();run();saveState();
+  });
+}
+function renderChips(){
+  $("#chips").innerHTML=POPULAR.map(p=>`<button class="chip">${p}</button>`).join("");
+  $("#chips").querySelectorAll(".chip").forEach(e=>e.onclick=()=>addTerm(e.textContent));
+}
+function addTerm(t){
+  t=(t||"").trim(); if(!t)return;
+  if(terms.includes(t)){toast("既に追加済みです");return;}
+  terms.push(t); $("#q").value=""; renderTerms(); run(); saveState();
+}
+function esc(s){return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));}
+function hl(text,kws){let h=esc(text);kws.forEach(k=>{if(!k)return;const re=new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&"),"g");h=h.replace(re,m=>`<mark>${m}</mark>`);});return h;}
+
+function run(){
+  const sum=$("#summary"),res=$("#results");
+  if(!terms.length){sum.style.display="none";res.innerHTML="";return;}
+  const matches=[];
+  for(const p of DATA){
+    // 検索対象＝選択中の出典のみ（検索キーワードもON時だけ対象）
+    const active=Object.entries(p.sources).filter(([s])=>srcOn.has(s));
+    if(!active.length)continue;
+    const blob=active.map(([,v])=>v).join("　");
+    const hit=terms.filter(t=>blob.includes(t));
+    const ok = mode==="and" ? hit.length===terms.length : hit.length>0;
+    if(ok)matches.push({p,hit:hit.length,active});
+  }
+  matches.sort((a,b)=>b.hit-a.hit);
+  sum.style.display="flex";
+  $("#cnt").textContent=matches.length;
+  const allSrc = SOURCES.length>0 && srcOn.size===SOURCES.length;
+  $("#note").textContent=`${mode==="and"?"すべて含む":"いずれか含む"}／${allSrc?"全出典":srcOn.size+"出典"}`;
+  if(!matches.length){res.innerHTML='<div class="empty"><div class="big">該</div>該当する経穴が見つかりませんでした</div>';return;}
+  res.innerHTML=matches.map(({p,hit,active})=>{
+    const body=active.map(([s,v])=>
+      `<div class="src"><div class="sname">${esc(displaySourceName(s))}</div><div class="stext">${hl(v,terms)}</div></div>`).join("");
+    const badge=(mode==="or"&&terms.length>1)?`<span class="pt-badge">${hit}/${terms.length}</span>`:"";
+    return `<div class="card"><div class="head">
+        <span class="pt-who">${esc(p.who)}</span>
+        <span class="pt-name">${esc(p.name)}</span>${p.reading?`<span class="pt-read">${esc(p.reading)}</span>`:""}
+        ${badge}<span class="pt-mer">${esc(p.meridian)}</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="body">${locBlock(p)}${body}</div></div>`;
+  }).join("");
+  res.querySelectorAll(".card .head").forEach(h=>h.onclick=()=>h.parentElement.classList.toggle("open"));
+}
+
+// 取穴部位①②を表示（両方あれば2行、片方ならその1行、旧locationにも対応）
+function locBlock(p){
+  const a=(p.loc1||"").trim(), b=(p.loc2||"").trim();
+  if(a&&b) return `<div class="loc"><b>取穴部位①</b>　${esc(a)}</div><div class="loc"><b>取穴部位②</b>　${esc(b)}</div>`;
+  const one=a||b;
+  return one?`<div class="loc"><b>取穴部位</b>　${esc(one)}</div>`:"";
+}
+
+// mode buttons
+$("#mode").querySelectorAll("button").forEach(b=>b.onclick=()=>{
+  mode=b.dataset.m;$("#mode").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));run();saveState();
+});
+$("#add").onclick=()=>addTerm($("#q").value);
+$("#q").addEventListener("keydown",e=>{if(e.key==="Enter")addTerm($("#q").value);});
+$("#clear").onclick=()=>{terms=[];renderTerms();run();saveState();};
+
+// ================= 逆引き（経穴名 → 主治症）=================
+let revMer=null;        // 選択中の経絡（nullなら全経絡）
+let revQ="";            // 経穴名検索文字列
+
+function uniqueMeridians(){
+  const seen=new Set(),list=[];
+  for(const p of DATA){ if(p.meridian && !seen.has(p.meridian)){seen.add(p.meridian);list.push(p.meridian);} }
+  return list;
+}
+function renderMer(){
+  const list=uniqueMeridians();
+  $("#mergrid").innerHTML=list.map(m=>
+    `<button class="merchip ${revMer===m?"on":""}" data-m="${esc(m)}">${esc(m)}</button>`).join("");
+  $("#mergrid").querySelectorAll(".merchip").forEach(e=>e.onclick=()=>{
+    revMer = (revMer===e.dataset.m) ? null : e.dataset.m;
+    renderMer(); runRev();
+  });
+}
+function runRev(){
+  const sum=$("#rsummary"),res=$("#rresults");
+  const q=revQ.trim();
+  if(!q && !revMer){sum.style.display="none";res.innerHTML="";return;}
+  // ひらがな↔カタカナを吸収して読み検索できるよう正規化
+  const qn=kanaNorm(q);
+  const matches=DATA.filter(p=>{
+    if(revMer && p.meridian!==revMer) return false;
+    if(q){
+      const byName=(p.name||"").includes(q);
+      const byRead=p.reading && kanaNorm(p.reading).includes(qn);
+      if(!byName && !byRead) return false;
+    }
+    return true;
+  });
+  // 経穴名の文字数昇順（完全一致を優先的に上へ。読みの完全一致も優先）
+  matches.sort((a,b)=>{
+    if(q){
+      const ea=(a.name===q||kanaNorm(a.reading||"")===qn)?0:1;
+      const eb=(b.name===q||kanaNorm(b.reading||"")===qn)?0:1;
+      if(ea!==eb) return ea-eb;
+    }
+    return (a.name||"").length-(b.name||"").length;
+  });
+  sum.style.display="flex";
+  $("#rcnt").textContent=matches.length;
+  $("#rnote").textContent = revMer ? revMer : "全経絡";
+  if(!matches.length){res.innerHTML='<div class="empty"><div class="big">穴</div>該当する経穴が見つかりませんでした</div>';return;}
+  res.innerHTML=matches.map(p=>{
+    const body=Object.entries(p.sources||{}).map(([s,v])=>
+      `<div class="src"><div class="sname">${esc(displaySourceName(s))}</div><div class="stext">${hl(v,q?[q]:[])}</div></div>`).join("");
+    const readHl = p.reading ? `<span class="rev-read">${hl(p.reading,q?[q]:[])}</span>` : "";
+    return `<div class="card"><div class="head">
+        <span class="rev-name">${hl(p.name||"",q?[q]:[])}</span>${readHl}
+        <span class="pt-mer" style="margin-left:auto">${esc(p.meridian||"")}</span>
+        <span class="arrow">▶</span>
+      </div>
+      <div class="body">
+        ${locBlock(p)}
+        ${body}
+      </div></div>`;
+  }).join("");
+  res.querySelectorAll(".card .head").forEach(h=>h.onclick=()=>h.parentElement.classList.toggle("open"));
+}
+// ひらがな⇄カタカナを統一（読み検索用）
+function kanaNorm(s){
+  return String(s||"").replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60));
+}
+let _rtimer;
+$("#rq").addEventListener("input",e=>{revQ=e.target.value;clearTimeout(_rtimer);_rtimer=setTimeout(runRev,120);});
+$("#rq").addEventListener("keydown",e=>{if(e.key==="Enter"){revQ=e.target.value;runRev();}});
+$("#rclear").onclick=()=>{revQ="";revMer=null;$("#rq").value="";renderMer();runRev();};
+
+// ================= タブ切替 =================
+const TTL={fwd:["主治症から経穴検索","SYMPTOM &nbsp;→&nbsp; ACUPOINT &nbsp;|&nbsp; 各家の主治より"],
+           rev:["経穴名から主治症検索","ACUPOINT &nbsp;→&nbsp; SYMPTOM &nbsp;|&nbsp; 各家の主治より"]};
+// 統合版：モード切替はタブ（acu_fwd/acu_rev）で行うため、#modetab があれば従来動作、無ければ何もしない
+(function(){
+  const mt=$("#modetab");
+  if(!mt) return;
+  mt.querySelectorAll("button").forEach(b=>b.onclick=()=>{
+    const pane=b.dataset.pane;
+    mt.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b));
+    const pf=$("#pane-fwd"), pr=$("#pane-rev");
+    if(pf) pf.hidden = pane!=="fwd";
+    if(pr) pr.hidden = pane!=="rev";
+    if(pane==="rev" && $("#mergrid") && !$("#mergrid").children.length) renderMer();
+  });
+})();
+
+// 取り込みボタン（ヘッダーに配置）：ファイル選択でデータを取り込む
+const _impBtn=$("#acu-import");
+if(_impBtn) _impBtn.onclick=triggerAcuImport;
+
+async function acuInit(){
+  loadState();
+  renderChips();renderTerms();
+  $("#mode").querySelectorAll("button").forEach(x=>x.classList.toggle("on",x.dataset.m===mode));
+  const ok=await loadData();
+  // SOURCES はデータ読み込み後に確定するため、ここで出典フィルタを描画
+  renderSrc();
+  if(ok){ run(); renderMer(); }
+}
+
+
+// --- 統合用：経穴名から1件取得し、詳細をモーダル表示 ---
+function findByName(name){
+  if(!Array.isArray(DATA)) return null;
+  const n=(name||'').trim();
+  // 完全一致優先、無ければ前方一致
+  return DATA.find(p=>p.name===n) || DATA.find(p=>p.name&&p.name.indexOf(n)===0) || null;
+}
+function openDetailByName(name){
+  const p=findByName(name);
+  const modal=document.getElementById('acuModal');
+  const body=document.getElementById('acuModalBody');
+  if(!modal||!body) return false;
+  if(!p){
+    body.innerHTML='<div class="acu-scope"><p style="padding:20px;text-align:center;color:var(--ink-soft)">「'+esc(name)+'」の経穴データが見つかりませんでした。<br><small>経穴データを取り込むと表示できます。</small></p></div>';
+  }else{
+    const srcs=Object.entries(p.sources||{}).map(([s,v])=>
+      `<div class="src"><div class="sname">${esc(displaySourceName(s))}</div><div class="stext">${esc(v)}</div></div>`).join('');
+    body.innerHTML=`<div class="acu-scope"><div class="card open" style="cursor:default">
+      <div class="head" style="cursor:default">
+        <span class="rev-name">${esc(p.name||'')}</span>${p.reading?`<span class="rev-read">${esc(p.reading)}</span>`:''}
+        <span class="pt-mer" style="margin-left:auto">${esc(p.meridian||'')}</span>
+      </div>
+      <div class="body" style="display:block">${locBlock(p)}${srcs}</div>
+    </div></div>`;
+  }
+  modal.classList.add('show');
+  return true;
+}
+function hasData(){ return Array.isArray(DATA) && DATA.length>0; }
+
+return { init:acuInit, openDetailByName, hasData, reload:loadData, run, runRev, renderSrc, renderMer };
+})();
+
+/* ===== 統合：弁証の経穴名タップ → 経穴詳細モーダル ===== */
+(function(){
+  const modal=document.getElementById('acuModal');
+  const closeBtn=document.getElementById('acuModalClose');
+  function close(){ modal.classList.remove('show'); }
+  if(closeBtn) closeBtn.onclick=close;
+  if(modal) modal.addEventListener('click', e=>{ if(e.target===modal) close(); });
+  document.addEventListener('keydown', e=>{ if(e.key==='Escape' && modal.classList.contains('show')) close(); });
+
+  // 弁証結果エリアの治療穴クリックで詳細表示（イベント委譲）
+  function onAcuActivate(target){
+    const el=target.closest && target.closest('.acu-link');
+    if(!el) return false;
+    const name=el.dataset.acu;
+    if(!name) return false;
+    // 経穴データ未取り込みなら案内
+    if(window.AcuModule){
+      if(!window._acuInited){ window._acuInited=true; AcuModule.init(); }
+      AcuModule.openDetailByName(name);
+    }
+    return true;
+  }
+  const resultArea=document.getElementById('resultArea');
+  if(resultArea){
+    resultArea.addEventListener('click', e=>onAcuActivate(e.target));
+    resultArea.addEventListener('keydown', e=>{ if((e.key==='Enter'||e.key===' ')&&onAcuActivate(e.target)) e.preventDefault(); });
+  }
+})();
+
 </script>
 </body>
 </html>
