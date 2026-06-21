@@ -177,8 +177,8 @@
   .tnode{margin:6px 0;font-size:.84rem}
   .tnode .tname{font-weight:600}
   .tnode .desc{color:var(--sub);font-size:.79rem;margin:2px 0 0}
-  .tnode .thow{margin:5px 0 0;padding:7px 10px;background:var(--hi,#f3ece0);border-left:3px solid var(--accent);border-radius:5px;font-size:.8rem;line-height:1.65;color:var(--ink)}
-  .tnode .thow-label{display:inline-block;font-weight:700;color:var(--accent);font-size:.72rem;margin-right:6px}
+  .tnode .thow{margin:4px 0 0;font-size:.8rem;line-height:1.65;color:var(--ink)}
+  .tnode .thow b{color:var(--accent);font-weight:700}
   .tnode label.chk{margin-top:4px;display:inline-flex}
   .pn-row{gap:14px;margin:6px 0 2px 4px;align-items:center}
   .pn-row.pn-show{display:flex}
@@ -187,6 +187,9 @@
   .pn-opt input{accent-color:var(--accent)}
   label.donechk.on{background:var(--hi);border-color:var(--accent)}
   .branch{margin:8px 0 8px 6px;padding-left:12px;border-left:2px solid var(--line)}
+  .tbranch{margin:6px 0 2px;padding:7px 10px;background:var(--hi,#f3ece0);border-radius:6px}
+  .tbranch-ttl{font-weight:700;font-size:.76rem;color:var(--accent);margin-bottom:2px}
+  .tbranch .branch{margin:4px 0 4px 4px}
   .arrow{color:var(--accent);font-weight:700;margin:0 4px}
   .tag-pos{color:var(--pos);font-weight:700}
   .tag-neg{color:var(--neg);font-weight:700}
@@ -2155,12 +2158,49 @@ function toTests(){
 
 /* テスト1項目のHTML（実施チェック → 陽性/陰性ラジオが出現）
    grp はラジオのname衝突を防ぐためのプレフィックス、idx は連番 */
-function testNodeHTML(t, grp, idx){
+/* テスト名から照合用キーワードを作る（cond中の略称と突き合わせる）
+   例: "Lift-offテスト(肩甲下筋)" → "Lift-off" / "Painful arc(有痛弧)" → "Painful arc" */
+function testKeyword(name){
+  let s = name;
+  s = s.replace(/\([^)]*\)/g,'');      // 括弧内を除去
+  s = s.replace(/（[^）]*）/g,'');
+  s = s.replace(/テスト|徴候|手技/g,''); // 種別語を除去
+  return s.trim();
+}
+/* condテキスト（HTML）からプレーン文字列を得る */
+function condPlain(cond){ return cond.replace(/<[^>]+>/g,''); }
+
+/* このbranchが「単一/OR の陽性」で、テストごとに表示すべきか判定。
+   表示すべきなら、対象テストid配列を返す。下部に残すなら null。
+   - 陰性を含む → 下部
+   - 「＋」を含む（複数テストの組合せ） → 下部
+   - 陽性で、テスト名に一致 → そのテストid配列（複数可＝A/B両方に表示） */
+function branchTargets(b, tests){
+  const plain = condPlain(b.cond);
+  if(plain.indexOf('陰性')>=0) return null;
+  if(plain.indexOf('陽性')<0) return null;       // 陽性を含まない（すべて良好など）→ 下部
+  if(plain.indexOf('＋')>=0 || plain.indexOf('+')>=0) return null; // 組合せ → 下部
+  const ids=[];
+  tests.forEach(t=>{
+    const kw = testKeyword(t.name);
+    if(kw && plain.indexOf(kw)>=0) ids.push(t.id);
+  });
+  return ids.length ? ids : null;
+}
+
+function testNodeHTML(t, grp, idx, myBranches, kind){
   const nm = grp+'_'+idx;          // ラジオのグループ名（テストごとに独立）
   const tn = esc(t.name);
+  const ttl = kind==='解釈' ? '解釈の目安（参考）' : '判断の分岐（参考）';
+  const clabel = kind==='解釈' ? '解釈' : '結論候補';
+  const branchHtml = (myBranches && myBranches.length)
+    ? `<div class="tbranch" id="tb_${nm}" style="display:none">
+        <div class="tbranch-ttl">${ttl}</div>
+        ${myBranches.map(b=>`<div class="branch"><span class="arrow">→</span>${b.cond}<div class="concl"><b>${clabel}：</b>${b.concl}</div></div>`).join('')}
+       </div>` : '';
   return `<div class="tnode">
     <span class="tname">・${t.name}</span><div class="desc">${t.desc}</div>
-    ${t.how?`<div class="thow"><span class="thow-label">やり方</span>${esc(t.how)}</div>`:''}
+    ${t.how?`<div class="thow"><b>やり方：</b>${esc(t.how)}</div>`:''}
     <label class="chk donechk" style="margin-top:5px">
       <input type="checkbox" class="donechk-in" data-test="${tn}" data-radio="${nm}"
         onchange="onDoneToggle(this)"><span>実施した</span></label>
@@ -2168,6 +2208,7 @@ function testNodeHTML(t, grp, idx){
       <label class="pn-opt"><input type="radio" name="${nm}" value="陽性"><span class="tag-pos">陽性</span></label>
       <label class="pn-opt"><input type="radio" name="${nm}" value="陰性"><span class="tag-neg">陰性</span></label>
     </div>
+    ${branchHtml}
   </div>`;
 }
 
@@ -2175,6 +2216,8 @@ function onDoneToggle(cb){
   cb.closest('label').classList.toggle('on', cb.checked);
   const row=document.getElementById('pn_'+cb.dataset.radio);
   if(row) row.style.display = cb.checked ? 'flex' : 'none';
+  const tb=document.getElementById('tb_'+cb.dataset.radio);
+  if(tb) tb.style.display = cb.checked ? 'block' : 'none';
 }
 
 function buildTests(checked){
@@ -2185,17 +2228,26 @@ function buildTests(checked){
     return;
   }
   area.innerHTML=flows.map((f,idx)=>{
-    const tests=f.tests.filter(t=>!isHidden('test',t.id)).map((t,ti)=>testNodeHTML(t, 'o_'+f.trig, ti)).join('');
-    const branch=f.branch.map(b=>
+    const visTests = f.tests.filter(t=>!isHidden('test',t.id));
+    // branchをテスト別／下部に振り分け
+    const perTest = {};   // testid -> [branch]
+    const bottom = [];
+    (f.branch||[]).forEach(b=>{
+      const ids = branchTargets(b, visTests);
+      if(ids){ ids.forEach(id=>{ (perTest[id]=perTest[id]||[]).push(b); }); }
+      else bottom.push(b);
+    });
+    const tests=visTests.map((t,ti)=>testNodeHTML(t, 'o_'+f.trig, ti, perTest[t.id])).join('');
+    const branch=bottom.map(b=>
       `<div class="branch"><span class="arrow">→</span>${b.cond}<div class="concl"><b>結論候補：</b>${b.concl}</div></div>`).join('');
+    const bottomBlock = bottom.length ? `<div style="font-weight:700;font-size:.84rem;margin:10px 0 2px">判断の分岐（参考・複数テストの組合せ／陰性所見）</div>${branch}` : '';
     return `<div class="test-flow ${idx===0?'open':''}">
       <div class="tf-head" onclick="this.parentElement.classList.toggle('open')">
         <span>${LABELMAP[f.trig]} ＜${f.title}＞</span><span class="reg">${f.region} ▾</span></div>
       <div class="tf-body">
         <div style="font-weight:700;font-size:.84rem;margin-bottom:4px">行うテスト（実施したら✔→陽性/陰性を選択）</div>
         ${tests}
-        <div style="font-weight:700;font-size:.84rem;margin:10px 0 2px">判断の分岐（参考）</div>
-        ${branch}</div></div>`;
+        ${bottomBlock}</div></div>`;
   }).join('');
 }
 
@@ -2216,17 +2268,24 @@ function buildFuncTests(){
   const area=document.getElementById('funcArea');
   if(!area)return;
   area.innerHTML=FUNC_TESTS.map(f=>{
-    const tests=f.tests.filter(t=>!isHidden('func',t.id)).map((t,ti)=>testNodeHTML(t, 'f_'+f.cat, ti)).join('');
-    const branch=f.branch.map(b=>
+    const visTests = f.tests.filter(t=>!isHidden('func',t.id));
+    const perTest = {}; const bottom = [];
+    (f.branch||[]).forEach(b=>{
+      const ids = branchTargets(b, visTests);
+      if(ids){ ids.forEach(id=>{ (perTest[id]=perTest[id]||[]).push(b); }); }
+      else bottom.push(b);
+    });
+    const tests=visTests.map((t,ti)=>testNodeHTML(t, 'f_'+f.cat, ti, perTest[t.id], '解釈')).join('');
+    const branch=bottom.map(b=>
       `<div class="branch"><span class="arrow">→</span>${b.cond}<div class="concl"><b>解釈：</b>${b.concl}</div></div>`).join('');
+    const bottomBlock = bottom.length ? `<div style="font-weight:700;font-size:.84rem;margin:10px 0 2px">解釈の目安（組合せ／所見パターン）</div>${branch}` : '';
     return `<div class="test-flow">
       <div class="tf-head" onclick="this.parentElement.classList.toggle('open')">
         <span>${f.title}</span><span class="reg">${f.note} ▾</span></div>
       <div class="tf-body">
         <div style="font-weight:700;font-size:.84rem;margin-bottom:4px">検査項目（実施したら✔→陽性/陰性を選択）</div>
         ${tests}
-        <div style="font-weight:700;font-size:.84rem;margin:10px 0 2px">解釈の目安</div>
-        ${branch}</div></div>`;
+        ${bottomBlock}</div></div>`;
   }).join('');
 }
 
