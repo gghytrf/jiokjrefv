@@ -113,7 +113,7 @@
   .badge.subject { background: #5a8fa8; }
   .badge.exam-type { background: #8b5a3c; }
   .badge.exam-type.amashi { background: #5a3c8b; }
-  .question-meta .q-no { margin-left: auto; }
+  .question-meta .q-no { /* margin-left removed for level badge */ }
   .question-text { font-size: calc(16px * var(--fs)); line-height: 1.7; margin-bottom: 16px; padding: 4px 0; }
 
   .choices { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
@@ -395,6 +395,18 @@
         </label>
       </div>
 
+      <!-- 検索範囲の選択 -->
+      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+        <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f5f7fa; border: 2px solid #d4dde4; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.15s;" id="search-scope-all-label">
+          <input type="radio" name="search-scope" value="all" id="search-scope-all" style="accent-color: #2c5f7c; width: 16px; height: 16px;">
+          全問題から検索
+        </label>
+        <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #e3f0f7; border: 2px solid #2c5f7c; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.15s; font-weight: 600;" id="search-scope-filtered-label">
+          <input type="radio" name="search-scope" value="filtered" checked id="search-scope-filtered" style="accent-color: #2c5f7c; width: 16px; height: 16px;">
+          出題される問題のみ
+        </label>
+      </div>
+
       <!-- 検索ヒント -->
       <div style="font-size: 12px; color: #7a8a99; background: #f5f7fa; border-radius: 8px; padding: 8px 12px; margin-bottom: 10px; line-height: 1.7;">
         例：<strong style="color: #2c5f7c;">橈骨神経</strong>　または　<strong style="color: #2c5f7c;">橈骨 神経</strong>（スペース区切りでAND検索）<br>
@@ -651,6 +663,7 @@
         <span class="badge" id="q-year">第30回</span>
         <span class="badge subject" id="q-subject">解剖学</span>
         <span class="q-no" id="q-no">問1</span>
+        <span id="q-level-badge" style="display:none; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; color:white; margin-left:auto;"></span>
       </div>
       <div class="question-text" id="q-text"></div>
       <div class="choices" id="q-choices"></div>
@@ -971,6 +984,10 @@ function normalizeQuestion(q, i) {
     explanation:  q.explanation  || '',
     sourceUrl:    q.sourceUrl    || '',
     sourcePdf:    q.sourcePdf    || '',
+    // モード別出題フラグ（未指定の場合は year が数値かどうかで旧来通り判定）
+    dailyEnabled:   q.dailyEnabled   !== undefined ? !!q.dailyEnabled   : !isNaN(Number(year)),
+    subjectEnabled: q.subjectEnabled !== undefined ? !!q.subjectEnabled : !isNaN(Number(year)),
+    examEnabled:    q.examEnabled    !== undefined ? !!q.examEnabled    : true,
   };
 }
 
@@ -1259,10 +1276,10 @@ function startDailyMode() {
 
   const totalCount = dailyState.totalCount;
 
-  // 科目ごとに問題をグルーピング(AI作成問題は除外)
+  // 科目ごとに問題をグルーピング(dailyEnabled=true のもののみ)
   const bySubject = {};
   filtered.forEach(q => {
-    if (isNaN(Number(q.year))) return;
+    if (!q.dailyEnabled) return;
     if (!bySubject[q.subject]) bySubject[q.subject] = [];
     bySubject[q.subject].push(q);
   });
@@ -1481,10 +1498,10 @@ const examState = {
 };
 
 function goExamSetup() {
-  // 取り込み済み年度を取得（yearが数値のもののみ）
+  // 取り込み済み年度を取得（examEnabled=true かつ year が数値のもの）
   const yearSet = new Set();
   state.questions.forEach(q => {
-    if (!isNaN(Number(q.year))) yearSet.add(`${q.examType}_${q.year}`);
+    if (q.examEnabled && !isNaN(Number(q.year))) yearSet.add(`${q.examType}_${q.year}`);
   });
   const years = Array.from(yearSet).sort();
 
@@ -1507,10 +1524,10 @@ function goExamSetup() {
     select.innerHTML = '<option value="">問題データがありません</option>';
   }
 
-  // AI作成問題（yearが数値以外）のドロップダウンを構築
+  // AI作成問題（examEnabled=true かつ yearが数値以外）のドロップダウンを構築
   const originalYearSet = new Set();
   state.questions.forEach(q => {
-    if (isNaN(Number(q.year))) originalYearSet.add(q.year);
+    if (q.examEnabled && isNaN(Number(q.year))) originalYearSet.add(q.year);
   });
   const originalYears = Array.from(originalYearSet).sort();
 
@@ -1597,8 +1614,8 @@ function startExamMode() {
       yearLabel = 'AI作成問題(全)';
     }
   } else {
-    // 全範囲からランダム出題：year が数値の問題のみ（AI作成問題は除外）
-    yearFilter = (q) => !isNaN(Number(q.year));
+    // 全範囲からランダム出題：examEnabled=true の問題のみ（year数値に限らない）
+    yearFilter = (q) => q.examEnabled && !isNaN(Number(q.year));
     yearLabel = 'ランダム模試';
   }
 
@@ -2544,12 +2561,16 @@ function goSearch() {
   showScreen('search', '問題検索', '問題文・選択肢から検索');
   // ラジオボタンの見た目を更新
   updateSearchTargetUI();
+  updateSearchScopeUI();
   // 前回の結果をリセット
   document.getElementById('search-status').textContent = '';
   document.getElementById('search-results').style.display = 'none';
   // ラジオ変更時にUIを更新
   document.querySelectorAll('input[name="search-target"]').forEach(r => {
     r.onchange = updateSearchTargetUI;
+  });
+  document.querySelectorAll('input[name="search-scope"]').forEach(r => {
+    r.onchange = updateSearchScopeUI;
   });
   // Enterキーで検索
   const input = document.getElementById('search-input');
@@ -2569,6 +2590,22 @@ function updateSearchTargetUI() {
     cLabel.style.borderColor = !qChecked ? '#2c5f7c' : '#d4dde4';
     cLabel.style.background  = !qChecked ? '#e3f0f7' : '#f5f7fa';
     cLabel.style.fontWeight  = !qChecked ? '600' : '400';
+  }
+}
+
+function updateSearchScopeUI() {
+  const allLabel = document.getElementById('search-scope-all-label');
+  const filteredLabel = document.getElementById('search-scope-filtered-label');
+  const allChecked = document.getElementById('search-scope-all').checked;
+  if (allLabel) {
+    allLabel.style.borderColor = allChecked ? '#2c5f7c' : '#d4dde4';
+    allLabel.style.background  = allChecked ? '#e3f0f7' : '#f5f7fa';
+    allLabel.style.fontWeight  = allChecked ? '600' : '400';
+  }
+  if (filteredLabel) {
+    filteredLabel.style.borderColor = !allChecked ? '#2c5f7c' : '#d4dde4';
+    filteredLabel.style.background  = !allChecked ? '#e3f0f7' : '#f5f7fa';
+    filteredLabel.style.fontWeight  = !allChecked ? '600' : '400';
   }
 }
 
@@ -2604,6 +2641,8 @@ function normalizeText(str) {
 function execSearch() {
   const raw      = (document.getElementById('search-input').value || '').trim();
   const target   = document.querySelector('input[name="search-target"]:checked').value;
+  const scopeEl  = document.querySelector('input[name="search-scope"]:checked');
+  const scope    = scopeEl ? scopeEl.value : 'filtered';
   const statusEl = document.getElementById('search-status');
   const resultsWrap = document.getElementById('search-results');
 
@@ -2618,12 +2657,19 @@ function execSearch() {
   // スペース（全角・半角）で分割してAND条件化、空文字除去・正規化
   const keywords = raw.split(/[\s　]+/).filter(k => k.length > 0).map(k => normalizeText(k));
 
-  // 全問題から検索（AI作成問題は除外、除外年度も除く、試験種別フィルターは考慮しない）
-  const allQ = state.questions.filter(q => {
-    const yr = Number(q.year);
-    if (isNaN(yr)) return false; // AI作成問題は検索対象外
-    return !isYearExcluded(q);
-  });
+  // 検索対象プールを scope に応じて決定
+  let allQ;
+  if (scope === 'all') {
+    // 全問題から検索（AI作成問題は除外、除外年度も除く）
+    allQ = state.questions.filter(q => {
+      const yr = Number(q.year);
+      if (isNaN(yr)) return false;
+      return !isYearExcluded(q);
+    });
+  } else {
+    // 出題される問題のみ（試験種別フィルター・除外年度・出題除外問題・AI作成問題を除く）
+    allQ = filterByExamType(state.questions).filter(q => !isNaN(Number(q.year)));
+  }
 
   // ② 全キーワードがすべてヒットする問題を抽出（AND検索・正規化済みテキストで比較）
   const matched = allQ.filter(q => {
@@ -2654,11 +2700,12 @@ function execSearch() {
 
   // ⑤ 結果表示
   const kwLabel = keywords.length > 1 ? keywords.map(k => `「${k}」`).join(' AND ') : `「${keywords[0]}」`;
+  const scopeLabel = scope === 'all' ? '全問題' : '出題される問題';
   statusEl.style.color = '#2c5f7c';
   statusEl.textContent = `${matched.length}件 ヒット（${kwLabel}）`;
 
   document.getElementById('search-result-label').textContent =
-    `検索結果: ${matched.length}件（タップで問題を確認）`;
+    `検索結果: ${matched.length}件（${scopeLabel}対象 / タップで問題を確認）`;
 
   const listEl = document.getElementById('search-result-list');
   listEl.innerHTML = '';
@@ -2818,8 +2865,8 @@ function isYearExcluded(q) {
 }
 
 function filterByExamType(questions) {
-  // yearが数値以外の問題は本試験モード専用のため、通常モードから除外
-  let normalQuestions = questions.filter(q => !isNaN(Number(q.year)));
+  // dailyEnabled も subjectEnabled も false の問題（本試験専用など）は通常モードから除外
+  let normalQuestions = questions.filter(q => q.dailyEnabled || q.subjectEnabled);
   // 除外年度フィルター（examType別に独立して判定）
   normalQuestions = normalQuestions.filter(q => !isYearExcluded(q));
   // 出題除外問題を除外（科目別演習で「出題しない問題」を選んだ場合は除外しない）
@@ -3248,8 +3295,8 @@ function startMode(mode, subject) {
     // 復習はシャッフル
     queue = shuffleArray([...queue]);
   } else if (mode === 'subject') {
-    // AI作成問題は科目別演習から除外
-    queue = queue.filter(q => q.subject === subject && !isNaN(Number(q.year)));
+    // subjectEnabled=true の問題のみ対象
+    queue = queue.filter(q => q.subject === subject && q.subjectEnabled);
 
     // 未出題優先 + 出題済みは復習日が近い順
     const untried = queue.filter(q => !state.progress[q.id]);
@@ -3304,6 +3351,18 @@ function showQuestion() {
   document.getElementById('q-subject').textContent = q.subject;
   document.getElementById('q-no').textContent = `問${q.questionNo}`;
   document.getElementById('q-text').textContent = q.questionText;
+
+  // 忘却曲線レベルバッジを更新
+  const lvEl = document.getElementById('q-level-badge');
+  if (lvEl) {
+    const p = state.progress[q.id];
+    const lv = p ? Math.min(p.intervalLevel || 0, 5) : 0;
+    const lvLabels = ['未学習', 'Lv1', 'Lv2', 'Lv3', 'Lv4', 'Lv5'];
+    const lvColors  = ['#9aa8b5', '#f44336', '#ffc107', '#8bc34a', '#4caf50', '#2196f3'];
+    lvEl.textContent = lvLabels[lv];
+    lvEl.style.background = lvColors[lv];
+    lvEl.style.display = 'inline-block';
+  }
 
   // 選択肢の表示順を決定
   let order = [0, 1, 2, 3];
@@ -3591,9 +3650,9 @@ async function saveMemo() {
 //=========================================================
 const MUTED_SUBJECT = '出題しない問題';
 
-// AI作成問題かどうかの判定（yearが数値以外）
+// AI作成問題かどうかの判定（examEnabled=true かつ yearが数値以外）
 function isAiQuestion(q) {
-  return !q || isNaN(Number(q.year));
+  return !q || (isNaN(Number(q.year)) && q.examEnabled !== false);
 }
 
 function showMuteBtn(qid) {
@@ -3794,10 +3853,10 @@ async function updateSetting(key, value) {
 // 初回セットアップ
 //=========================================================
 function getAvailableYears() {
-  // 通常問題（yearが数値）の年度一覧を試験種別ごとに取得
+  // 今日の演習・科目別演習の対象（dailyEnabled or subjectEnabled）のyearのみ
   const yearSet = new Set();
   state.questions.forEach(q => {
-    if (!isNaN(Number(q.year))) {
+    if ((q.dailyEnabled || q.subjectEnabled) && !isNaN(Number(q.year))) {
       yearSet.add(JSON.stringify({ examType: q.examType, year: Number(q.year) }));
     }
   });

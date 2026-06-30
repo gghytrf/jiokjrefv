@@ -329,31 +329,7 @@
     </div>
   </div>
 
-  <!-- ===== 設定 ===== -->
-  <div id="settings" class="screen">
-    <div class="card">
-      <h2>問題データ</h2>
-      <div id="mb-data-info" style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;">問題データ: —</div>
-      <div class="setting-row">
-        <div>
-          <div class="lbl">問題データを取り込む / 更新する</div>
-          <div class="desc">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div>
-        </div>
-        <button class="btn" onclick="mbReimport()">📥 取り込み</button>
-      </div>
-    </div>
-    <div class="card">
-      <h2>学習履歴の管理</h2>
-      <div class="setting-row">
-        <div>
-          <div class="lbl">学習履歴をリセット</div>
-          <div class="desc">問題データは保持されます</div>
-        </div>
-        <button class="btn danger" onclick="resetProgress()">🗑️ 削除</button>
-      </div>
-      <div style="font-size:calc(12px*var(--fs));color:var(--sub);margin-top:10px;line-height:1.7;">バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>
-    </div>
-  </div>
+  <!-- ===== 設定 ===== -->\n  <div id=\"settings\" class=\"screen\">\n    <div class=\"card\">\n      <h2>問題データ</h2>\n      <div id=\"mb-data-info\" style=\"font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;\">問題データ: —</div>\n      <div class=\"setting-row\">\n        <div>\n          <div class=\"lbl\">問題データを取り込む / 更新する</div>\n          <div class=\"desc\">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div>\n        </div>\n        <button class=\"btn\" onclick=\"mbReimport()\">📥 取り込み</button>\n      </div>\n    </div>\n    <div class=\"card\">\n      <h2>出題しない年度</h2>\n      <div style=\"font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;\">チェックした年度の問題は今日の演習・科目別演習・復習モードのすべてで表示されません。</div>\n      <div id=\"mb-settings-year-list\" style=\"max-height:360px;overflow-y:auto;\">\n        <div style=\"color:var(--sub);text-align:center;padding:16px;\">読み込み中...</div>\n      </div>\n    </div>\n    <div class=\"card\">\n      <h2>学習履歴の管理</h2>\n      <div class=\"setting-row\">\n        <div>\n          <div class=\"lbl\">学習履歴をリセット</div>\n          <div class=\"desc\">問題データは保持されます</div>\n        </div>\n        <button class=\"btn danger\" onclick=\"resetProgress()\">🗑️ 削除</button>\n      </div>\n      <div style=\"font-size:calc(12px*var(--fs));color:var(--sub);margin-top:10px;line-height:1.7;\">バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>\n    </div>\n  </div>
 
 </div>
 
@@ -389,6 +365,7 @@ let ALL = [];               // 全問題
 let MB_DATA_VERSION = null;  // 取り込んだ問題データのバージョン
 let YEAR_LABELS = {};       // year値 → 表示ラベル
 let PROGRESS = {};          // questionId -> {questionId,correctCount,incorrectCount,intervalLevel,lastResult,lastAnsweredAt,nextReviewAt}
+let MB_EXCLUDE_YEARS = [];  // 除外年度キー配列 (例: ["hari_kyu_30","amashi_30"])
 let dailyCount = 20;        // 今日の演習の問題数
 
 let session = null;         // {queue, idx, correct, wrong, answered, mode, subject}
@@ -569,6 +546,11 @@ async function loadData(){
   // 端末の保存をできるだけ消えにくくする（対応ブラウザのみ）
   try{ if(navigator.storage && navigator.storage.persist){ await navigator.storage.persist(); } }catch(e){}
   await loadProgressAll();
+  // 除外年度を読み込む
+  try{
+    const rec = await mbGet('meta', 'excludeYears');
+    MB_EXCLUDE_YEARS = (rec && Array.isArray(rec.value)) ? rec.value : [];
+  }catch(e){ MB_EXCLUDE_YEARS = []; }
   const ok = await mbLoadQuestions();
   if(!ok || ALL.length === 0){
     // 未取り込み：取り込み案内を表示（通信不要）
@@ -617,6 +599,7 @@ function openSettings(){
   showScreen('settings');
   const el = document.getElementById('mb-data-info');
   if(el) el.textContent = '問題データ: ' + (ALL && ALL.length ? ('ver.' + (MB_DATA_VERSION || '—') + '（' + ALL.length + '問）') : '未取り込み');
+  mbRenderYearList();
 }
 function goSubjectSelect(){ showScreen('subjects'); }
 
@@ -638,8 +621,9 @@ function shuffle(a){ a=a.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.fl
 // 今日の演習：未出題・復習対象を優先し、全科目から分散して出題
 function startDailyMode(){
   const today = todayStr();
+  const pool = mbFilteredAll();
   const unseen = [], due = [], rest = [];
-  ALL.forEach(q=>{
+  pool.forEach(q=>{
     const p = PROGRESS[q.id];
     if(!p || !p.lastAnsweredAt) unseen.push(q);
     else if(p.nextReviewAt && p.nextReviewAt <= today) due.push(q);
@@ -656,12 +640,12 @@ function startDailyMode(){
 function startMode(mode){
   if(mode!=='review') return;
   const today = todayStr();
-  let dueList = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt <= today; });
+  const pool = mbFilteredAll();
+  let dueList = pool.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt <= today; });
   if(dueList.length===0){
-    // 復習対象が無ければ、間違えたことのある問題を出題
-    dueList = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.incorrectCount>0; });
+    toast('今は復習対象の問題がありません');
+    return;
   }
-  if(dueList.length===0){ toast('今は復習対象の問題がありません'); return; }
   // nextReviewAt の早い順
   dueList.sort((a,b)=>{
     const da=(PROGRESS[a.id]&&PROGRESS[a.id].nextReviewAt)||'9999-12-31';
@@ -673,7 +657,7 @@ function startMode(mode){
 
 // 科目別演習
 function startSubject(subject){
-  const pool = ALL.filter(q=>q.subject===subject);
+  const pool = mbFilteredAll().filter(q=>q.subject===subject);
   if(pool.length===0){ toast('該当する問題がありません'); return; }
   // 未出題→復習対象→その他 の順で出題
   const today = todayStr();
@@ -771,9 +755,10 @@ function restartSame(){
 /* ====== 表示更新 ====== */
 function refreshHome(){
   const today = todayStr();
-  const total = ALL.length;
-  const answered = Object.values(PROGRESS).filter(p=>p.lastAnsweredAt).length;
-  const due = ALL.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt<=today; }).length;
+  const pool = mbFilteredAll();
+  const total = pool.length;
+  const answered = pool.filter(q=>PROGRESS[q.id]&&PROGRESS[q.id].lastAnsweredAt).length;
+  const due = pool.filter(q=>{ const p=PROGRESS[q.id]; return p && p.nextReviewAt && p.nextReviewAt<=today; }).length;
   document.getElementById('st-total').textContent = total;
   document.getElementById('st-answered').textContent = answered;
   document.getElementById('st-due').textContent = due;
@@ -839,6 +824,77 @@ function refreshStats(){
     html+=`<div class="subj-prog"><div class="sp-head"><span>${s}</span><span style="color:var(--sub)">進度 ${score}% / 全${st.totalQ}問</span></div><div class="sp-bar">${seg}</div></div>`;
   });
   box.innerHTML=html;
+}
+
+/* ====== 除外年度 ====== */
+function mbIsYearExcluded(q){
+  if(!MB_EXCLUDE_YEARS || MB_EXCLUDE_YEARS.length===0) return false;
+  const yr = Number(q.year);
+  if(isNaN(yr)) return false;
+  return MB_EXCLUDE_YEARS.includes(`${q.examType}_${yr}`);
+}
+
+// 通常モード（今日の演習・科目別・復習）向けフィルタ
+function mbFilteredAll(){
+  return ALL.filter(q => !mbIsYearExcluded(q));
+}
+
+function mbRenderYearList(){
+  const container = document.getElementById('mb-settings-year-list');
+  if(!container) return;
+  // year が数値の問題から年度一覧を取得
+  const yearSet = new Set();
+  ALL.forEach(q=>{ if(!isNaN(Number(q.year))) yearSet.add(`${q.examType}_${Number(q.year)}`); });
+  const years = Array.from(yearSet).sort();
+  if(years.length===0){
+    container.innerHTML = '<div style="color:var(--sub);text-align:center;padding:16px;">年度データがありません</div>';
+    return;
+  }
+  const typeLabels = { hari_kyu:'はりきゅう', amashi:'あマ指' };
+  // 試験種別ごとにグループ化
+  const groups = {};
+  years.forEach(key=>{
+    const parts = key.split('_');
+    const yr = parts[parts.length-1];
+    const tp = parts.slice(0,-1).join('_');
+    if(!groups[tp]) groups[tp]=[];
+    groups[tp].push({ key, year:yr, examType:tp });
+  });
+  let html='';
+  Object.entries(groups).forEach(([examType, items])=>{
+    const label = typeLabels[examType] || examType;
+    html += `<div style="font-size:calc(12px*var(--fs));color:var(--sub);font-weight:700;letter-spacing:1px;margin:10px 0 6px;">━ ${label}</div>`;
+    html += `<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:8px;">`;
+    items.forEach(({key, year, examType:et})=>{
+      const checked = MB_EXCLUDE_YEARS.includes(key) ? 'checked' : '';
+      html += `
+        <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:${checked?'#fdf0ee':'var(--bg)'};border:1px solid ${checked?'#e8a090':'var(--line)'};border-radius:8px;cursor:pointer;font-size:calc(13px*var(--fs));transition:all 0.15s;" id="mb-yr-label-${et}-${year}">
+          <input type="checkbox" ${checked} data-year="${year}" data-examtype="${et}"
+            style="width:18px;height:18px;accent-color:#c0504d;flex-shrink:0;"
+            onchange="mbOnYearExcludeChange(this)">
+          第${year}回
+        </label>`;
+    });
+    html += `</div>`;
+  });
+  container.innerHTML = html;
+}
+
+async function mbOnYearExcludeChange(cb){
+  const year = cb.dataset.year;
+  const examType = cb.dataset.examtype;
+  const lbl = document.getElementById(`mb-yr-label-${examType}-${year}`);
+  if(lbl){
+    lbl.style.background = cb.checked ? '#fdf0ee' : 'var(--bg)';
+    lbl.style.borderColor = cb.checked ? '#e8a090' : 'var(--line)';
+  }
+  const allCbs = document.querySelectorAll('#mb-settings-year-list input[type="checkbox"]');
+  MB_EXCLUDE_YEARS = [];
+  allCbs.forEach(c=>{ if(c.checked) MB_EXCLUDE_YEARS.push(`${c.dataset.examtype}_${c.dataset.year}`); });
+  try{
+    await mbPut('meta', { key:'excludeYears', value: MB_EXCLUDE_YEARS });
+  }catch(e){}
+  refreshHome();
 }
 
 async function resetProgress(){
