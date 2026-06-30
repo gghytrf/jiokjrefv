@@ -383,8 +383,9 @@
     <div class="card">
       <h2>🔍 問題検索</h2>
 
-      <!-- 検索対象の選択 -->
-      <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+      <!-- 検索箇所の選択 -->
+      <div style="font-size: 12px; font-weight: 600; color: #4a5a6a; margin-bottom: 6px;">検索箇所</div>
+      <div style="display: flex; gap: 8px; margin-bottom: 14px;">
         <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f5f7fa; border: 2px solid #d4dde4; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.15s;" id="search-target-q-label">
           <input type="radio" name="search-target" value="question" checked id="search-target-q" style="accent-color: #2c5f7c; width: 16px; height: 16px;">
           問題文から検索
@@ -395,7 +396,11 @@
         </label>
       </div>
 
+      <!-- 検索対象と検索範囲の区切り線 -->
+      <div style="border-top: 1px dashed #d4dde4; margin-bottom: 14px;"></div>
+
       <!-- 検索範囲の選択 -->
+      <div style="font-size: 12px; font-weight: 600; color: #4a5a6a; margin-bottom: 6px;">検索範囲</div>
       <div style="display: flex; gap: 8px; margin-bottom: 8px;">
         <label style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px; background: #f5f7fa; border: 2px solid #d4dde4; border-radius: 10px; cursor: pointer; font-size: 14px; transition: all 0.15s;" id="search-scope-all-label">
           <input type="radio" name="search-scope" value="all" id="search-scope-all" style="accent-color: #2c5f7c; width: 16px; height: 16px;">
@@ -507,7 +512,7 @@
         </label>
         <label class="radio-row">
           <input type="radio" name="exam-source" value="original" onchange="updateExamSourceUI()">
-          <span>AI作成問題出題</span>
+          <span>本試験専用問題</span>
         </label>
         <div id="original-select-wrap" style="padding: 8px 0 8px 32px; display: none;">
           <select id="exam-original-select" style="width: 100%;" disabled>
@@ -539,16 +544,6 @@
 
     <div class="card">
       <h2>④ オプション</h2>
-      <div class="setting-row">
-        <div>
-          <div class="lbl">学習履歴に反映</div>
-          <div class="desc" id="exam-record-history-desc">画面実施時のみ自動反映。紙で実施した場合は試験後に画面で結果入力が必要です。</div>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="exam-record-history">
-          <span class="slider"></span>
-        </label>
-      </div>
       <div class="setting-row">
         <div>
           <div class="lbl">選択肢の順序をランダム化</div>
@@ -685,8 +680,10 @@
         <button class="btn outline" onclick="saveMemo()" style="margin-top: 8px; font-size: 13px; padding: 6px 14px;">メモを保存</button>
       </div>
 
-      <button class="btn mute full" id="mute-btn" onclick="toggleMuteQuestion()" style="display:none; margin-top: 8px; font-size: 13px;">🚫 今後出題しない</button>
-      <button class="btn full" id="next-btn" onclick="nextQuestion()" style="display:none; margin-top: 8px;">次の問題 →</button>
+      <div id="mute-next-row" style="display: flex; gap: 8px; margin-top: 8px;">
+        <button class="btn mute" id="mute-btn" onclick="toggleMuteQuestion()" style="display:none; flex: 1; font-size: 13px;">🚫 今後出題しない</button>
+        <button class="btn" id="next-btn" onclick="nextQuestion()" style="display:none; flex: 1;">次の問題 →</button>
+      </div>
       <button class="btn outline full" id="back-to-list-btn" onclick="backToList()" style="display:none; margin-top: 8px; font-size: 13px;">← 一覧に戻る</button>
     </div>
   </div>
@@ -984,9 +981,9 @@ function normalizeQuestion(q, i) {
     explanation:  q.explanation  || '',
     sourceUrl:    q.sourceUrl    || '',
     sourcePdf:    q.sourcePdf    || '',
-    // モード別出題フラグ（未指定の場合は year が数値かどうかで旧来通り判定）
-    dailyEnabled:   q.dailyEnabled   !== undefined ? !!q.dailyEnabled   : !isNaN(Number(year)),
-    subjectEnabled: q.subjectEnabled !== undefined ? !!q.subjectEnabled : !isNaN(Number(year)),
+    // モード別出題フラグ（未指定の場合は「すべてのモードに出題」=trueとして扱う）
+    dailyEnabled:   q.dailyEnabled   !== undefined ? !!q.dailyEnabled   : true,
+    subjectEnabled: q.subjectEnabled !== undefined ? !!q.subjectEnabled : true,
     examEnabled:    q.examEnabled    !== undefined ? !!q.examEnabled    : true,
   };
 }
@@ -1490,7 +1487,7 @@ const examState = {
   timerInterval: null,
   examType: 'hari_kyu',
   isRunning: false,
-  recordHistory: false,
+  recordHistory: true,
   examMethod: 'paper',
   shuffleChoices: false,
   // 問題ごとの選択肢順序とその場合の正答番号(画面表示用)
@@ -1498,10 +1495,11 @@ const examState = {
 };
 
 function goExamSetup() {
-  // 取り込み済み年度を取得（examEnabled=true かつ year が数値のもの）
+  // 「年度を選んで出題」用：dailyEnabled=true の問題が存在する年度のみ一覧化
+  // （本試験専用問題の年度は含めない）
   const yearSet = new Set();
   state.questions.forEach(q => {
-    if (q.examEnabled && !isNaN(Number(q.year))) yearSet.add(`${q.examType}_${q.year}`);
+    if (q.dailyEnabled && !isNaN(Number(q.year))) yearSet.add(`${q.examType}_${q.year}`);
   });
   const years = Array.from(yearSet).sort();
 
@@ -1524,18 +1522,19 @@ function goExamSetup() {
     select.innerHTML = '<option value="">問題データがありません</option>';
   }
 
-  // AI作成問題（examEnabled=true かつ yearが数値以外）のドロップダウンを構築
+  // 「本試験専用問題」用：dailyEnabled=false かつ subjectEnabled=false かつ examEnabled=true の問題
+  // 年度（year）の値ごとにグルーピングしてドロップダウンに表示
   const originalYearSet = new Set();
   state.questions.forEach(q => {
-    if (q.examEnabled && isNaN(Number(q.year))) originalYearSet.add(q.year);
+    if (isExamOnlyQuestion(q)) originalYearSet.add(q.year);
   });
   const originalYears = Array.from(originalYearSet).sort();
 
   const origSelect = document.getElementById('exam-original-select');
   if (originalYears.length === 0) {
-    origSelect.innerHTML = '<option value="">追加データがありません</option>';
+    origSelect.innerHTML = '<option value="">本試験専用問題がありません</option>';
   } else {
-    origSelect.innerHTML = '<option value="">すべての追加分</option>';
+    origSelect.innerHTML = '<option value="">すべての本試験専用問題</option>';
     originalYears.forEach(yr => {
       const opt = document.createElement('option');
       opt.value = yr;
@@ -1560,34 +1559,19 @@ function updateExamSourceUI() {
   const origSel = document.getElementById('exam-original-select');
   origWrap.style.display = source === 'original' ? 'block' : 'none';
   origSel.disabled = source !== 'original';
-
-  // AI作成問題を選んだ場合は「学習履歴に反映」を強制OFF・操作不可にする
-  const recordCb = document.getElementById('exam-record-history');
-  const recordDesc = document.getElementById('exam-record-history-desc');
-  if (recordCb) {
-    if (source === 'original') {
-      recordCb.checked = false;
-      recordCb.disabled = true;
-      if (recordDesc) recordDesc.textContent = 'AI作成問題は学習履歴・忘却曲線に反映されません(本試験形式モード専用)。';
-    } else {
-      recordCb.disabled = false;
-      if (recordDesc) recordDesc.textContent = '画面実施時のみ自動反映。紙で実施した場合は試験後に画面で結果入力が必要です。';
-    }
-  }
 }
 
 function startExamMode() {
   const examType = document.querySelector('input[name="exam-type"]:checked').value;
   const source = document.querySelector('input[name="exam-source"]:checked').value;
   const method = document.querySelector('input[name="exam-method"]:checked').value;
-  let recordHistory = document.getElementById('exam-record-history').checked;
+  // 学習履歴への反映は必ず行う（オプションは廃止。実際に解答した試験のみ記録される）
+  const recordHistory = true;
   const shuffleChoices = document.getElementById('exam-shuffle-choices').checked;
   const excludeMuted = document.getElementById('exam-exclude-muted').checked;
 
-  // AI作成問題の場合は、チェックの有無に関わらず学習履歴に反映しない
-  if (source === 'original') {
-    recordHistory = false;
-  }
+  // 本試験専用問題も含め、学習履歴への反映可否はオプションのチェックに従う
+  // （以前は「AI作成問題」を強制的に学習履歴対象外にしていたが、本試験専用問題は学習履歴に残す仕様のため撤廃）
 
   // 年度フィルタ
   let yearFilter = null;
@@ -1600,22 +1584,23 @@ function startExamMode() {
     }
     const parts = yearKey.split('_');
     const yr = parseInt(parts[parts.length - 1]);
-    yearFilter = (q) => q.year === yr;
+    // dailyEnabled=true（今日の演習・復習モードにチェックがある）問題のみ対象
+    yearFilter = (q) => q.dailyEnabled && q.year === yr;
     yearLabel = `第${yr}回`;
   } else if (source === 'original') {
     const origKey = document.getElementById('exam-original-select').value;
     if (origKey) {
-      // 特定の追加分を選択
-      yearFilter = (q) => isNaN(Number(q.year)) && q.year === origKey;
+      // 特定の本試験専用問題グループを選択
+      yearFilter = (q) => isExamOnlyQuestion(q) && q.year === origKey;
       yearLabel = origKey;
     } else {
-      // すべての追加分
-      yearFilter = (q) => isNaN(Number(q.year));
-      yearLabel = 'AI作成問題(全)';
+      // すべての本試験専用問題
+      yearFilter = (q) => isExamOnlyQuestion(q);
+      yearLabel = '本試験専用問題(全)';
     }
   } else {
-    // 全範囲からランダム出題：examEnabled=true の問題のみ（year数値に限らない）
-    yearFilter = (q) => q.examEnabled && !isNaN(Number(q.year));
+    // 全範囲からランダム出題：dailyEnabled=true（今日の演習・復習モードにチェックがある）問題のみ
+    yearFilter = (q) => q.dailyEnabled;
     yearLabel = 'ランダム模試';
   }
 
@@ -1933,6 +1918,7 @@ async function finishExam() {
     if (isCorrect) subjectStats[q.subject].correct++;
 
     // 学習履歴に反映(元の問題IDで保存)
+    // ※採点（試験を最後まで終えた場合）にのみ到達する。中断・破棄の場合はここに来ないため記録されない。
     if (examState.recordHistory) {
       saveProgress(q.id, isCorrect);
     }
@@ -2261,7 +2247,7 @@ async function openPaperInput(sessionId) {
   document.getElementById('paper-input-meta').innerHTML = `
     <div><strong>${escapeHtml(session.typeLabel)} ${escapeHtml(session.titleSuffix)}</strong></div>
     <div>作成日: ${date} ${time} / 全${session.items.length}問</div>
-    <div style="margin-top:6px;font-size:12px;">${session.recordHistory ? '✓ 採点後、学習履歴に反映されます' : '※ 学習履歴には反映されません(設定で変更可)'}</div>
+    <div style="margin-top:6px;font-size:12px;">✓ 採点後、学習履歴に反映されます</div>
   `;
 
   renderPaperInput();
@@ -2387,6 +2373,7 @@ function confirmDeletePaperSession() {
   const session = paperState.session;
   if (!session) return;
   showModal('セッションを削除', `「${session.typeLabel} ${session.titleSuffix}」のセッションを削除しますか?\n入力した結果も全て破棄されます。`, async () => {
+    // セッションを削除するのみで saveProgress は呼ばない（学習履歴には一切残らない）
     await dbDelete('paperSessions', session.id);
     paperState.session = null;
     closeModal();
@@ -2660,15 +2647,11 @@ function execSearch() {
   // 検索対象プールを scope に応じて決定
   let allQ;
   if (scope === 'all') {
-    // 全問題から検索（AI作成問題は除外、除外年度も除く）
-    allQ = state.questions.filter(q => {
-      const yr = Number(q.year);
-      if (isNaN(yr)) return false;
-      return !isYearExcluded(q);
-    });
+    // 全問題から検索（本試験専用問題と除外年度のみ除く）
+    allQ = state.questions.filter(q => !isExamOnlyQuestion(q) && !isYearExcluded(q));
   } else {
-    // 出題される問題のみ（試験種別フィルター・除外年度・出題除外問題・AI作成問題を除く）
-    allQ = filterByExamType(state.questions).filter(q => !isNaN(Number(q.year)));
+    // 出題される問題のみ（試験種別フィルター・除外年度・出題除外問題を考慮、本試験専用は検索対象外）
+    allQ = filterByExamType(state.questions);
   }
 
   // ② 全キーワードがすべてヒットする問題を抽出（AND検索・正規化済みテキストで比較）
@@ -2864,9 +2847,14 @@ function isYearExcluded(q) {
   return excludeYears.includes(`${q.examType}_${yr}`);
 }
 
+// 本試験専用問題（今日の演習・科目別演習・検索のいずれにも出さない。本試験モードと学習履歴のみ対象）
+function isExamOnlyQuestion(q) {
+  return !q.dailyEnabled && !q.subjectEnabled && !!q.examEnabled;
+}
+
 function filterByExamType(questions) {
-  // dailyEnabled も subjectEnabled も false の問題（本試験専用など）は通常モードから除外
-  let normalQuestions = questions.filter(q => q.dailyEnabled || q.subjectEnabled);
+  // dailyEnabled も subjectEnabled も false の問題（本試験専用）は通常モードから除外
+  let normalQuestions = questions.filter(q => !isExamOnlyQuestion(q));
   // 除外年度フィルター（examType別に独立して判定）
   normalQuestions = normalQuestions.filter(q => !isYearExcluded(q));
   // 出題除外問題を除外（科目別演習で「出題しない問題」を選んだ場合は除外しない）
@@ -3658,15 +3646,16 @@ function isAiQuestion(q) {
 function showMuteBtn(qid) {
   const btn = document.getElementById('mute-btn');
   if (!btn) return;
-  // 今日の演習・科目別演習のみ表示（本試験・復習モードは非表示）
-  const showModes = ['daily', 'subject', 'review', 'memo_review', 'muted_review', 'exam_review', 'search'];
+  // 今日の演習・科目別演習・通常の復習系のみ表示（本試験本体・本試験見直し・検索からの本試験専用問題は非表示）
+  const showModes = ['daily', 'subject', 'review', 'memo_review', 'muted_review', 'search'];
   if (!showModes.includes(state.currentMode)) {
     btn.style.display = 'none';
     return;
   }
-  // AI作成問題は出題除外の対象外（本試験形式モード専用のため）
+  // 本試験専用問題（dailyEnabled/subjectEnabled が両方false）は出題除外の対象外
+  // （本試験のみ出題する問題を物理的に出題除外できないようにするため）
   const qObj = state.currentQuestion;
-  if (qObj && qObj.id === qid && isAiQuestion(qObj)) {
+  if (qObj && qObj.id === qid && isExamOnlyQuestion(qObj)) {
     btn.style.display = 'none';
     return;
   }
@@ -3679,9 +3668,9 @@ function showMuteBtn(qid) {
 async function toggleMuteQuestion() {
   const q = state.currentQuestion;
   if (!q) return;
-  // AI作成問題は出題除外にできない
-  if (isAiQuestion(q)) {
-    showToast('AI作成問題は出題除外にできません');
+  // 本試験専用問題は出題除外にできない（物理的にガード）
+  if (isExamOnlyQuestion(q)) {
+    showToast('本試験専用問題は出題除外にできません');
     return;
   }
   if (!state.mutedQuestions) state.mutedQuestions = {};
