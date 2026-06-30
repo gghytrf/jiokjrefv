@@ -329,7 +329,38 @@
     </div>
   </div>
 
-  <!-- ===== 設定 ===== -->\n  <div id=\"settings\" class=\"screen\">\n    <div class=\"card\">\n      <h2>問題データ</h2>\n      <div id=\"mb-data-info\" style=\"font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;\">問題データ: —</div>\n      <div class=\"setting-row\">\n        <div>\n          <div class=\"lbl\">問題データを取り込む / 更新する</div>\n          <div class=\"desc\">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div>\n        </div>\n        <button class=\"btn\" onclick=\"mbReimport()\">📥 取り込み</button>\n      </div>\n    </div>\n    <div class=\"card\">\n      <h2>出題しない年度</h2>\n      <div style=\"font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;\">チェックした年度の問題は今日の演習・科目別演習・復習モードのすべてで表示されません。</div>\n      <div id=\"mb-settings-year-list\" style=\"max-height:360px;overflow-y:auto;\">\n        <div style=\"color:var(--sub);text-align:center;padding:16px;\">読み込み中...</div>\n      </div>\n    </div>\n    <div class=\"card\">\n      <h2>学習履歴の管理</h2>\n      <div class=\"setting-row\">\n        <div>\n          <div class=\"lbl\">学習履歴をリセット</div>\n          <div class=\"desc\">問題データは保持されます</div>\n        </div>\n        <button class=\"btn danger\" onclick=\"resetProgress()\">🗑️ 削除</button>\n      </div>\n      <div style=\"font-size:calc(12px*var(--fs));color:var(--sub);margin-top:10px;line-height:1.7;\">バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>\n    </div>\n  </div>
+  <!-- ===== 設定 ===== -->
+  <div id="settings" class="screen">
+    <div class="card">
+      <h2>問題データ</h2>
+      <div id="mb-data-info" style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;">問題データ: —</div>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">問題データを取り込む / 更新する</div>
+          <div class="desc">配布された marubatsu_questions.json を選択（端末に保存・オフライン可）</div>
+        </div>
+        <button class="btn" onclick="mbReimport()">📥 取り込み</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>出題しない年度</h2>
+      <div style="font-size:calc(13px*var(--fs));color:var(--sub);margin-bottom:10px;">チェックした年度の問題は今日の演習・科目別演習・復習モードのすべてで表示されません。</div>
+      <div id="mb-settings-year-list" style="max-height:360px;overflow-y:auto;">
+        <div style="color:var(--sub);text-align:center;padding:16px;">読み込み中...</div>
+      </div>
+    </div>
+    <div class="card">
+      <h2>学習履歴の管理</h2>
+      <div class="setting-row">
+        <div>
+          <div class="lbl">学習履歴をリセット</div>
+          <div class="desc">問題データは保持されます</div>
+        </div>
+        <button class="btn danger" onclick="resetProgress()">🗑️ 削除</button>
+      </div>
+      <div style="font-size:calc(12px*var(--fs));color:var(--sub);margin-top:10px;line-height:1.7;">バックアップ（書き出し・復元）は、統合ホーム画面下部の「学習データのバックアップ」からまとめて行えます。</div>
+    </div>
+  </div>
 
 </div>
 
