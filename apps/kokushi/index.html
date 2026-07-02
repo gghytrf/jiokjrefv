@@ -1198,6 +1198,19 @@ async function init() {
     showImportPrompt();
     return;
   }
+
+  // 旧フォーマット検出：examOnly フィールドも「本試験モードのみに出題」フィールドも
+  // ない問題データが取り込まれている場合は再取り込みを促す
+  const rec = await dbGet('questionData', 'current');
+  if (rec && Array.isArray(rec.questions) && rec.questions.length > 0) {
+    const sample = rec.questions.find(q =>
+      q['本試験モードのみに出題'] !== undefined || q.examOnly !== undefined
+    );
+    if (!sample) {
+      showToast('⚠️ 問題データが旧フォーマットです。設定から最新のJSONを再取り込みしてください。', 5000);
+    }
+  }
+
   state.questions = BUNDLED_QUESTIONS;
   await afterDataReady();
 }
