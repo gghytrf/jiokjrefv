@@ -968,6 +968,32 @@ function normalizeQuestion(q, i) {
   const yearNum = Number(year);
   if (!isNaN(yearNum) && String(year).trim() !== '') year = yearNum;
 
+  // モード別出題フラグ
+  // examOnly: true  → 本試験モードのみ出題（今日の演習・復習・科目別演習・検索から除外）
+  // examOnly: false → 全モードに出題（デフォルト・未指定時）
+  // JSON側キー名は英語（examOnly）・日本語（本試験モードのみに出題）どちらでも可。
+  // 後方互換: 旧フラグ（dailyEnabled/subjectEnabled/examEnabled）も引き続き参照。
+  let examOnly;
+  const examOnlyRaw = q.examOnly !== undefined
+    ? q.examOnly
+    : q['本試験モードのみに出題'];  // 日本語キー対応
+
+  if (examOnlyRaw !== undefined) {
+    // ✓, 1, true, "true" など truthy → 本試験専用
+    examOnly = !!examOnlyRaw;
+  } else if (q.dailyEnabled !== undefined || q.subjectEnabled !== undefined) {
+    // 旧仕様フォールバック: dailyEnabled/subjectEnabled が両方 false なら本試験専用
+    examOnly = !q.dailyEnabled && !q.subjectEnabled;
+  } else {
+    // 未指定 → 全モードに出題
+    examOnly = false;
+  }
+
+  // 後方互換のため内部では3フラグも維持
+  const dailyEnabled   = !examOnly;
+  const subjectEnabled = !examOnly;
+  const examEnabled    = true; // 常に本試験モードには出題
+
   return {
     id,
     examType:     q.examType     || '',
@@ -981,10 +1007,10 @@ function normalizeQuestion(q, i) {
     explanation:  q.explanation  || '',
     sourceUrl:    q.sourceUrl    || '',
     sourcePdf:    q.sourcePdf    || '',
-    // モード別出題フラグ（未指定の場合は「すべてのモードに出題」=trueとして扱う）
-    dailyEnabled:   q.dailyEnabled   !== undefined ? !!q.dailyEnabled   : true,
-    subjectEnabled: q.subjectEnabled !== undefined ? !!q.subjectEnabled : true,
-    examEnabled:    q.examEnabled    !== undefined ? !!q.examEnabled    : true,
+    examOnly,
+    dailyEnabled,
+    subjectEnabled,
+    examEnabled,
   };
 }
 
@@ -2847,8 +2873,11 @@ function isYearExcluded(q) {
   return excludeYears.includes(`${q.examType}_${yr}`);
 }
 
-// 本試験専用問題（今日の演習・科目別演習・検索のいずれにも出さない。本試験モードと学習履歴のみ対象）
+// 本試験専用問題（今日の演習・科目別演習・検索のいずれにも出さない）
+// examOnly フラグを直接参照（旧仕様フォールバックとして3フラグも引き続き維持）
 function isExamOnlyQuestion(q) {
+  if (!q) return false;
+  if (q.examOnly !== undefined) return !!q.examOnly;
   return !q.dailyEnabled && !q.subjectEnabled && !!q.examEnabled;
 }
 
