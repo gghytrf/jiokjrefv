@@ -499,7 +499,7 @@ async function mbLoadQuestions(){
     const rec = await mbGet('questionData', 'current');
     if(rec && Array.isArray(rec.questions) && rec.questions.length>0){
       ALL = rec.questions;
-      MB_DATA_VERSION = rec.version || null;
+      MB_DATA_VERSION = rec.questionDataVersion || rec.version || null;
       return true;
     }
     return false;
@@ -519,9 +519,9 @@ function mbImportFile(ev){
         alert('問題データが見つかりませんでした。\nmarubatsu_questions.json を選択してください。');
         return;
       }
-      await mbPut('questionData', { key:'current', questions:arr, version:(json && json.version) || null, importedAt:new Date().toISOString() });
+      await mbPut('questionData', { key:'current', questions:arr, questionDataVersion:(json && json.questionDataVersion) || (json && json.version) || null, importedAt:new Date().toISOString() });
       ALL = arr;
-      MB_DATA_VERSION = (json && json.version) || null;
+      MB_DATA_VERSION = (json && json.questionDataVersion) || (json && json.version) || null;
       mbHideImportPrompt();
       buildFilters();
       refreshHome();
